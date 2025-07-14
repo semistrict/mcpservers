@@ -3,57 +3,86 @@ package tmuxmcp
 import (
 	"context"
 	"fmt"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/semistrict/mcpservers/servers/tmux/pkg/tmux"
+	"github.com/semistrict/mcpservers/pkg/mcpcommon"
+	"os/exec"
+	"time"
 )
 
 func init() {
-	r.Register(registerCaptureTool)
+	Tools = append(Tools, mcpcommon.ReflectTool[*CaptureTool]())
 }
 
-func registerCaptureTool(server *Server) {
-	tool := mcp.NewTool("tmux_capture",
-		mcp.WithDescription("Capture output from tmux session with content hash"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithIdempotentHintAnnotation(true),
-		mcp.WithString("prefix",
-			mcp.Description("Session name prefix (auto-detected from git repo if not provided)"),
-		),
-		mcp.WithString("session",
-			mcp.Description("Specific session name (overrides prefix)"),
-		),
-	)
-	server.AddTool(tool, server.handleCapture)
+type CaptureTool struct {
+	_ mcpcommon.ToolInfo `name:"tmux_capture" title:"Capture Tmux Session" description:"Capture output from tmux session with content hash" destructive:"false"`
+	SessionTool
+	WaitForChange string  `json:"wait_for_change" description:"Optional hash to wait for content to change from"`
+	Timeout       float64 `json:"timeout" description:"Maximum seconds to wait for content change (default: 10)"`
 }
 
-func (s *Server) handleCapture(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	arguments := req.GetArguments()
-	prefix, _ := arguments["prefix"].(string)
-	session, _ := arguments["session"].(string)
-
-	result, err := s.tmuxClient.Capture(tmux.CaptureOptions{
-		Prefix:  prefix,
-		Session: session,
-	})
+func (t *CaptureTool) Handle(ctx context.Context) (interface{}, error) {
+	sessionName, err := resolveSession(t.Prefix, t.Session)
 	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error capturing session: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
+		return nil, fmt.Errorf("error capturing session: %v", err)
 	}
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			mcp.TextContent{
-				Type: "text",
-				Text: fmt.Sprintf("Session: %s\nHash: %s\n\n%s", result.SessionName, result.Hash, result.Output),
-			},
-		},
-	}, nil
+	// If WaitForChange is specified, wait for content to change from that hash
+	if t.WaitForChange != "" {
+		timeout := t.Timeout
+		if timeout == 0 {
+			timeout = 10 // default 10 seconds
+		}
+
+		result, err := t.waitForHashChange(sessionName, t.WaitForChange, timeout)
+		if err != nil {
+			return nil, fmt.Errorf("error waiting for content change: %v", err)
+		}
+		return result, nil
+	}
+
+	// Standard capture without waiting
+	cmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("error capturing session: failed to capture session %s: %v", sessionName, err)
+	}
+
+	formatted := formatOutput(string(output))
+	hash := calculateHash(string(output))
+
+	return fmt.Sprintf("Session: %s\nHash: %s\n\n%s", sessionName, hash, formatted), nil
+}
+
+func (t *CaptureTool) waitForHashChange(sessionName, expectedHash string, maxWait float64) (interface{}, error) {
+	timeout := time.After(time.Duration(maxWait) * time.Second)
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			// Return current state even if it hasn't changed
+			cmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p")
+			output, err := cmd.Output()
+			if err != nil {
+				return nil, fmt.Errorf("failed to capture session after timeout: %v", err)
+			}
+			formatted := formatOutput(string(output))
+			hash := calculateHash(string(output))
+			return fmt.Sprintf("Session: %s\nHash: %s (unchanged after %.1f seconds)\n\n%s", sessionName, hash, maxWait, formatted), nil
+
+		case <-ticker.C:
+			cmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p")
+			output, err := cmd.Output()
+			if err != nil {
+				continue // Skip this iteration if capture fails
+			}
+
+			currentHash := calculateHash(string(output))
+			if currentHash != expectedHash {
+				// Content has changed!
+				formatted := formatOutput(string(output))
+				return fmt.Sprintf("Session: %s\nHash: %s (changed from %s)\n\n%s", sessionName, currentHash, expectedHash, formatted), nil
+			}
+		}
+	}
 }

@@ -3,86 +3,87 @@ package tmuxmcp
 import (
 	"context"
 	"fmt"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/semistrict/mcpservers/servers/tmux/pkg/tmux"
+	"github.com/semistrict/mcpservers/pkg/mcpcommon"
+	"os/exec"
 )
 
 func init() {
-	r.Register(registerNewSessionTool)
+	Tools = append(Tools, mcpcommon.ReflectTool[*NewSessionTool]())
 }
 
-func registerNewSessionTool(server *Server) {
-	tool := mcp.NewTool("tmux_new_session",
-		mcp.WithDescription("Create a new tmux session with optional command execution"),
-		mcp.WithArray("command",
-			mcp.Description("Command and arguments to run in the session"),
-		),
-		mcp.WithString("prefix",
-			mcp.Description("Session name prefix (auto-detected from git repo if not provided)"),
-		),
-		mcp.WithString("expect",
-			mcp.Description("Wait for this string to appear in output before returning"),
-		),
-		mcp.WithBoolean("kill_others",
-			mcp.Description("Kill existing sessions with same prefix before creating new one"),
-		),
-		mcp.WithBoolean("allow_multiple",
-			mcp.Description("Allow multiple sessions with same prefix"),
-		),
-		mcp.WithNumber("max_wait",
-			mcp.Description("Maximum seconds to wait for output"),
-		),
-	)
-	server.AddTool(tool, server.handleNewSession)
+type NewSessionTool struct {
+	_ mcpcommon.ToolInfo `name:"tmux_new_session" title:"Create Tmux Session" description:"Create a new tmux session with optional command execution" destructive:"false"`
+	SessionTool
+	Command       []string `json:"command" description:"Command and arguments to run in the session"`
+	Expect        string   `json:"expect" description:"Wait for this string to appear in output before returning"`
+	KillOthers    bool     `json:"kill_others" description:"Kill existing sessions with same prefix before creating new one"`
+	AllowMultiple bool     `json:"allow_multiple" description:"Allow multiple sessions with same prefix"`
+	MaxWait       float64  `json:"max_wait" description:"Maximum seconds to wait for output"`
 }
 
-func (s *Server) handleNewSession(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	arguments := req.GetArguments()
-
-	var command []string
-	if cmd, ok := arguments["command"].([]interface{}); ok {
-		for _, v := range cmd {
-			if str, ok := v.(string); ok {
-				command = append(command, str)
-			}
-		}
-	}
-
-	prefix, _ := arguments["prefix"].(string)
-	expect, _ := arguments["expect"].(string)
-	killOthers, _ := arguments["kill_others"].(bool)
-	allowMultiple, _ := arguments["allow_multiple"].(bool)
-	maxWait, _ := arguments["max_wait"].(float64)
+func (t *NewSessionTool) Handle(ctx context.Context) (interface{}, error) {
+	maxWait := t.MaxWait
 	if maxWait == 0 {
 		maxWait = 10
 	}
 
-	result, err := s.tmuxClient.NewSession(tmux.NewSessionOptions{
-		Command:       command,
-		Prefix:        prefix,
-		Expect:        expect,
-		KillOthers:    killOthers,
-		AllowMultiple: allowMultiple,
-		MaxWait:       maxWait,
-	})
-	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error creating session: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
+	prefix := t.Prefix
+	if prefix == "" {
+		prefix = detectPrefix()
 	}
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			mcp.TextContent{
-				Type: "text",
-				Text: fmt.Sprintf("Session created: %s\nOutput:\n%s", result.SessionName, result.Output),
-			},
-		},
-	}, nil
+	if t.KillOthers {
+		sessions, err := findSessionsByPrefix(prefix)
+		if err == nil {
+			for _, session := range sessions {
+				killSession(session)
+			}
+		}
+	}
+
+	if !t.AllowMultiple {
+		existing, err := findSessionsByPrefix(prefix)
+		if err == nil && len(existing) > 0 {
+			return nil, fmt.Errorf("session with prefix '%s' already exists: %s. Use --allow-multiple or --kill-others", prefix, existing[0])
+		}
+	}
+
+	sessionName := generateSessionName(prefix, t.Command)
+
+	var cmd *exec.Cmd
+	if len(t.Command) > 0 {
+		args := append([]string{"new-session", "-d", "-s", sessionName}, t.Command...)
+		cmd = exec.Command("tmux", args...)
+	} else {
+		cmd = exec.Command("tmux", "new-session", "-d", "-s", sessionName)
+	}
+
+	if err := cmd.Run(); err != nil {
+		if err := cleanupTmuxTempFiles(); err == nil {
+			if retryErr := cmd.Run(); retryErr == nil {
+				// Success on retry
+			} else {
+				return nil, fmt.Errorf("failed to create session even after cleanup: %w", retryErr)
+			}
+		} else {
+			return nil, fmt.Errorf("failed to create session: %w", err)
+		}
+	}
+
+	var output string
+	if t.Expect != "" {
+		result, err := waitForExpected(sessionName, t.Expect, maxWait)
+		if err != nil {
+			return nil, fmt.Errorf("error creating session: %v", err)
+		}
+		output = result.Output
+	} else {
+		result, err := waitForStability(sessionName, maxWait)
+		if err != nil {
+			return nil, fmt.Errorf("error creating session: %v", err)
+		}
+		output = result.Output
+	}
+
+	return fmt.Sprintf("Session created: %s\nOutput:\n%s", sessionName, output), nil
 }

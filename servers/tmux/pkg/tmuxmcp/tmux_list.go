@@ -3,62 +3,58 @@ package tmuxmcp
 import (
 	"context"
 	"fmt"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/semistrict/mcpservers/pkg/mcpcommon"
+	"os/exec"
+	"strings"
 )
 
 func init() {
-	r.Register(registerListTool)
+	Tools = append(Tools, mcpcommon.ReflectTool[*ListTool]())
 }
 
-func registerListTool(server *Server) {
-	tool := mcp.NewTool("tmux_list",
-		mcp.WithDescription("List all tmux sessions"),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithIdempotentHintAnnotation(true),
-		mcp.WithString("prefix",
-			mcp.Description("Filter sessions by prefix"),
-		),
-	)
-	server.AddTool(tool, server.handleList)
+type ListTool struct {
+	_ mcpcommon.ToolInfo `name:"tmux_list" title:"List Tmux Sessions" description:"List all tmux sessions" destructive:"false"`
+	SessionTool
 }
 
-func (s *Server) handleList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	arguments := req.GetArguments()
-	prefix, _ := arguments["prefix"].(string)
-
-	sessions, err := s.tmuxClient.List(prefix)
+func (t *ListTool) Handle(ctx context.Context) (interface{}, error) {
+	cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}")
+	output, err := cmd.Output()
 	if err != nil {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{
-				mcp.TextContent{
-					Type: "text",
-					Text: fmt.Sprintf("Error listing sessions: %v", err),
-				},
-			},
-			IsError: true,
-		}, nil
+		// No sessions exist
+		sessions := []string{}
+		if len(sessions) == 0 {
+			result := "No tmux sessions found"
+			if t.Prefix != "" {
+				result += fmt.Sprintf(" with prefix '%s'", t.Prefix)
+			}
+			return result, nil
+		}
 	}
 
-	var output string
-	if len(sessions) == 0 {
-		output = "No tmux sessions found"
-		if prefix != "" {
-			output += fmt.Sprintf(" with prefix '%s'", prefix)
-		}
-	} else {
-		output = "Tmux sessions:\n"
+	sessions := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if t.Prefix != "" {
+		var filtered []string
 		for _, session := range sessions {
-			output += fmt.Sprintf("- %s\n", session)
+			if strings.HasPrefix(session, t.Prefix) {
+				filtered = append(filtered, session)
+			}
 		}
+		sessions = filtered
 	}
 
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			mcp.TextContent{
-				Type: "text",
-				Text: output,
-			},
-		},
-	}, nil
+	if len(sessions) == 0 {
+		result := "No tmux sessions found"
+		if t.Prefix != "" {
+			result += fmt.Sprintf(" with prefix '%s'", t.Prefix)
+		}
+		return result, nil
+	}
+
+	result := "Tmux sessions:\n"
+	for _, session := range sessions {
+		result += fmt.Sprintf("- %s\n", session)
+	}
+
+	return result, nil
 }

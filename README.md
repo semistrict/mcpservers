@@ -18,6 +18,40 @@ Advanced tmux session management with safety features:
 
 See [servers/tmux/README.md](servers/tmux/README.md) for detailed documentation.
 
+## Development
+
+This project includes a comprehensive Makefile for building and testing:
+
+### Quick Start
+```bash
+make                    # Build and test everything
+make build              # Build all binaries
+make test               # Run all tests
+make help               # Show all available targets
+```
+
+### Development Workflow
+```bash
+make dev                # Clean, format, vet, build, and test
+make check              # Format, vet, build, and test
+make test-tmux          # Run only tmux tests
+make help-tmux          # Show tmux-mcp tool help
+```
+
+### CI/CD
+```bash
+make ci                 # CI workflow (fmt-check, vet, build, test)
+make fmt-check          # Verify code is properly formatted
+make test-coverage      # Generate coverage report
+make lint               # Run linter (requires golangci-lint)
+```
+
+### Installation
+```bash
+make install            # Install binaries to $GOPATH/bin
+make clean              # Remove build artifacts
+```
+
 ## Building
 
 Build a specific server:
