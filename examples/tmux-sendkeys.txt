@@ -1,0 +1,20 @@
+# Test send-keys functionality with Enter key
+# This demonstrates the hash-based safety system and proper Enter key handling
+
+# Create a session with bash
+tmux_new_session prefix=sendtest
+
+# Capture initial state to get hash  
+tmux_capture prefix=sendtest
+
+# Note: You'll need to manually copy the hash from the capture above
+# and use it in the send-keys command below
+# 
+# Example with a hash (replace HASH_HERE with actual hash):
+# tmux_send_keys hash=HASH_HERE keys=echo\ hello\ world enter=true
+
+# Then capture again to see the result:
+# tmux_capture prefix=sendtest
+
+# Clean up when done:
+# tmux_kill prefix=sendtest

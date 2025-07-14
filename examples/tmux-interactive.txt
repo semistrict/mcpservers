@@ -1,0 +1,17 @@
+# Interactive tmux session test
+# This demonstrates the hash-based safety system
+
+# Create a session with a shell
+tmux_new_session command=[bash] prefix=interactive
+
+# Capture initial state to get hash
+tmux_capture prefix=interactive
+
+# Send keys to the session (you'll need to use the hash from the capture above)
+# tmux_send_keys hash=HASH_FROM_CAPTURE keys=echo\ hello enter=true
+
+# Capture again to see the result
+# tmux_capture prefix=interactive
+
+# Clean up
+# tmux_kill prefix=interactive
