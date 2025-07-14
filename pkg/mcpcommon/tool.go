@@ -7,6 +7,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -115,26 +116,58 @@ func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 		fieldName := strings.Split(jsonTag, ",")[0]
 		description := field.Tag.Get("description")
 		required := strings.Contains(field.Tag.Get("json"), "required")
+		defaultValue := field.Tag.Get("default")
+		
+		// Validate that description doesn't contain "default:" - should use separate tag
+		if strings.Contains(strings.ToLower(description), "default:") {
+			panic(fmt.Sprintf("Field %s.%s: description contains 'default:' - use separate 'default' struct tag instead", 
+				toolType.Name(), field.Name))
+		}
 
 		// Add property based on field type
 		switch field.Type.Kind() {
 		case reflect.String:
-			opt := mcp.WithString(fieldName, mcp.Description(description))
+			var paramOptions []mcp.PropertyOption
+			paramOptions = append(paramOptions, mcp.Description(description))
 			if required {
-				opt = mcp.WithString(fieldName, mcp.Description(description), mcp.Required())
+				paramOptions = append(paramOptions, mcp.Required())
 			}
-			options = append(options, opt)
+			if defaultValue != "" {
+				paramOptions = append(paramOptions, mcp.DefaultString(defaultValue))
+			}
+			options = append(options, mcp.WithString(fieldName, paramOptions...))
+			
 		case reflect.Bool:
-			options = append(options, mcp.WithBoolean(fieldName, mcp.Description(description)))
-		case reflect.Int, reflect.Int64, reflect.Float64:
-			opt := mcp.WithNumber(fieldName, mcp.Description(description))
-			if required {
-				opt = mcp.WithNumber(fieldName, mcp.Description(description), mcp.Required())
+			var paramOptions []mcp.PropertyOption
+			paramOptions = append(paramOptions, mcp.Description(description))
+			if defaultValue != "" {
+				if defaultValue == "true" {
+					paramOptions = append(paramOptions, mcp.DefaultBool(true))
+				} else if defaultValue == "false" {
+					paramOptions = append(paramOptions, mcp.DefaultBool(false))
+				}
 			}
-			options = append(options, opt)
+			options = append(options, mcp.WithBoolean(fieldName, paramOptions...))
+			
+		case reflect.Int, reflect.Int64, reflect.Float64:
+			var paramOptions []mcp.PropertyOption
+			paramOptions = append(paramOptions, mcp.Description(description))
+			if required {
+				paramOptions = append(paramOptions, mcp.Required())
+			}
+			if defaultValue != "" {
+				if defaultNum, err := strconv.ParseFloat(defaultValue, 64); err == nil {
+					paramOptions = append(paramOptions, mcp.DefaultNumber(defaultNum))
+				}
+			}
+			options = append(options, mcp.WithNumber(fieldName, paramOptions...))
 		case reflect.Slice:
 			if field.Type.Elem().Kind() == reflect.String {
-				options = append(options, mcp.WithArray(fieldName, mcp.Description(description)))
+				// Array of strings - specify items as string type
+				options = append(options, mcp.WithArray(fieldName, 
+					mcp.Description(description),
+					mcp.WithStringItems(),
+				))
 			}
 		}
 	}

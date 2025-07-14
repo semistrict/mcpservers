@@ -9,6 +9,8 @@ all: build test
 build:
 	@echo "Building tmux-mcp..."
 	go build -o bin/tmux-mcp ./servers/tmux/cmd/tmux-mcp
+	@echo "Building automcp..."
+	go build -o bin/automcp ./servers/automcp/cmd/automcp
 	@echo "Building mcptest..."
 	go build -o bin/mcptest ./cmd/mcptest
 	@echo "Building mcpwrapper..."
@@ -77,6 +79,7 @@ clean:
 install: build
 	@echo "Installing binaries..."
 	cp bin/tmux-mcp $(GOPATH)/bin/
+	cp bin/automcp $(GOPATH)/bin/
 	cp bin/mcptest $(GOPATH)/bin/
 	cp bin/mcpwrapper $(GOPATH)/bin/
 	@echo "Install complete!"
@@ -85,6 +88,11 @@ install: build
 help-tmux:
 	@echo "Showing tmux-mcp help..."
 	./bin/tmux-mcp -h
+
+# Show help for automcp
+help-automcp:
+	@echo "Showing automcp help..."
+	./bin/automcp -h
 
 # Run quick checks (format, vet, build, test)
 check: fmt vet build test

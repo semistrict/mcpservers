@@ -41,4 +41,4 @@ tmp_*
 # Built binaries
 mcptest
 mcpwrapper
-tmux-mcp
+tmux-mcpgo.work

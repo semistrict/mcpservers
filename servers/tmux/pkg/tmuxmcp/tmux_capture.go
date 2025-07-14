@@ -16,7 +16,7 @@ type CaptureTool struct {
 	_ mcpcommon.ToolInfo `name:"tmux_capture" title:"Capture Tmux Session" description:"Capture output from tmux session with content hash" destructive:"false"`
 	SessionTool
 	WaitForChange string  `json:"wait_for_change" description:"Optional hash to wait for content to change from"`
-	Timeout       float64 `json:"timeout" description:"Maximum seconds to wait for content change (default: 10)"`
+	Timeout       float64 `json:"timeout" description:"Maximum seconds to wait for content change" default:"10"`
 }
 
 func (t *CaptureTool) Handle(ctx context.Context) (interface{}, error) {
