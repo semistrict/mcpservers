@@ -18,13 +18,13 @@ type AttachTool struct {
 }
 
 func (t *AttachTool) Handle(ctx context.Context) (interface{}, error) {
-	sessionName, err := resolveSession(t.Prefix, t.Session)
+	sessionName, err := resolveSession(ctx, t.Prefix, t.Session)
 	if err != nil {
 		return nil, fmt.Errorf("error attaching to session: %v", err)
 	}
 
 	// Check if session exists
-	if !sessionExists(sessionName) {
+	if !sessionExists(ctx, sessionName) {
 		return nil, fmt.Errorf("session %s does not exist", sessionName)
 	}
 

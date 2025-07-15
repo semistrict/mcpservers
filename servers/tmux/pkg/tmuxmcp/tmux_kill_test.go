@@ -1,6 +1,7 @@
 package tmuxmcp
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
@@ -29,13 +30,13 @@ func TestKillTool_Handle_RequiresHash(t *testing.T) {
 
 func TestKillTool_Handle_CorrectHash(t *testing.T) {
 	// Create a test session using proper infrastructure
-	sessionName, err := createUniqueSession("test", []string{"bash"})
+	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	if err != nil {
 		t.Skipf("Could not create tmux session for testing: %v", err)
 	}
 
 	// Send content to the session using the test infrastructure
-	sendKeysCommon(SendKeysOptions{
+	sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
 		Hash:        "any", // Skip hash verification with empty expect
 		Keys:        "echo 'test content'",
@@ -48,7 +49,7 @@ func TestKillTool_Handle_CorrectHash(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	// Get current hash using proper infrastructure
-	captureResult, err := capture(captureOptions{Prefix: sessionName})
+	captureResult, err := capture(t.Context(), captureOptions{Prefix: sessionName})
 	if err != nil {
 		t.Fatalf("Failed to capture session: %v", err)
 	}
@@ -82,22 +83,24 @@ func TestKillTool_Handle_CorrectHash(t *testing.T) {
 	}
 
 	// Verify session is actually killed using proper infrastructure
-	if sessionExists(sessionName) {
+	if sessionExists(t.Context(), sessionName) {
 		t.Errorf("Expected session to be killed, but it still exists")
 	}
 }
 
 func TestKillTool_Handle_IncorrectHash(t *testing.T) {
 	// Create a test session using proper infrastructure
-	sessionName, err := createUniqueSession("test", []string{"bash"})
+	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	assert.NoError(t, err)
-	defer killSession(sessionName) // Cleanup in case test fails
+	defer func() { killSession(t.Context(), sessionName) }() // Cleanup in case test fails
 
-	rc, err := waitForStability(sessionName, time.Second)
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(time.Second))
+	defer cancel()
+	rc, err := waitForStability(ctx, sessionName)
 	assert.NoError(t, err)
 
 	// Send initial content using test infrastructure
-	sendKeysCommon(SendKeysOptions{
+	sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
 		Hash:        rc.Hash, // Skip hash verification with empty expect
 		Keys:        "echo 'initial content'",
@@ -106,15 +109,8 @@ func TestKillTool_Handle_IncorrectHash(t *testing.T) {
 		Literal:     true,
 	})
 
-	// Get initial hash using proper infrastructure
-	captureResult, err := capture(captureOptions{Prefix: sessionName})
-	if err != nil {
-		t.Fatalf("Failed to capture session: %v", err)
-	}
-	initialHash := captureResult.Hash
-
 	// Change the session content
-	sendKeysCommon(SendKeysOptions{
+	sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
 		Hash:        "any", // Skip hash verification with empty expect
 		Keys:        "echo 'changed content'",
@@ -130,8 +126,7 @@ func TestKillTool_Handle_IncorrectHash(t *testing.T) {
 		Hash: "55555",
 	}
 
-	ctx := t.Context()
-	_, err = tool.Handle(ctx)
+	_, err = tool.Handle(t.Context())
 	if !assert.NotNil(t, err) {
 		return
 	}
@@ -141,7 +136,7 @@ func TestKillTool_Handle_IncorrectHash(t *testing.T) {
 	}
 
 	// Verify session is NOT killed using proper infrastructure
-	if !sessionExists(sessionName) {
+	if !sessionExists(t.Context(), sessionName) {
 		t.Errorf("Expected session to still exist after failed kill, but it was killed")
 	}
 }
@@ -170,13 +165,13 @@ func TestKillTool_Handle_SessionNotFound(t *testing.T) {
 
 func TestKillTool_Handle_PrefixResolution(t *testing.T) {
 	// Create a test session using proper infrastructure
-	sessionName, err := createUniqueSession("test-kill-prefix", []string{"bash"})
+	sessionName, err := createUniqueSession(t.Context(), "test-kill-prefix", []string{"bash"})
 	if err != nil {
 		t.Skipf("Could not create tmux session for testing: %v", err)
 	}
 
 	// Send content to the session using test infrastructure
-	sendKeysCommon(SendKeysOptions{
+	sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
 		Hash:        "any", // Skip hash verification with empty expect
 		Keys:        "echo 'test'",
@@ -189,7 +184,7 @@ func TestKillTool_Handle_PrefixResolution(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	// Get current hash using proper infrastructure
-	captureResult, err := capture(captureOptions{Prefix: sessionName})
+	captureResult, err := capture(t.Context(), captureOptions{Prefix: sessionName})
 	if err != nil {
 		t.Fatalf("Failed to capture session: %v", err)
 	}

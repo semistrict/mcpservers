@@ -21,24 +21,17 @@ func (t *KillTool) Handle(ctx context.Context) (any, error) {
 		return nil, fmt.Errorf("hash is required for safety. Please capture the session first with tmux_capture to get the current hash, then use that hash in tmux_kill")
 	}
 
-	sessionName, err := resolveSession(t.Prefix, t.Session)
+	sessionName, err := resolveSession(ctx, t.Prefix, t.Session)
 	if err != nil {
 		return nil, err
 	}
 
 	// Verify current hash by capturing current state
-	captureCmd := buildTmuxCommand("capture-pane", "-t", sessionName, "-p")
-	captureOutput, err := captureCmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify session state: failed to capture session %s: %v", sessionName, err)
+	if err := verifySessionHash(ctx, sessionName, t.Hash); err != nil {
+		return nil, err
 	}
 
-	currentHash := calculateHash(string(captureOutput))
-	if currentHash != t.Hash {
-		return nil, fmt.Errorf("session state has changed. Please capture current output first and carefully consider whether you still want to kill this session")
-	}
-
-	if err := killSession(sessionName); err != nil {
+	if err := killSession(ctx, sessionName); err != nil {
 		return nil, fmt.Errorf("failed to kill session %s: %v", sessionName, err)
 	}
 

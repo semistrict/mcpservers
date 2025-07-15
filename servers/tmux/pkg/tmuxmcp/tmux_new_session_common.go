@@ -1,6 +1,7 @@
 package tmuxmcp
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,7 +13,7 @@ import (
 
 // createUniqueSession creates a new tmux session with a unique name
 // It will try incrementing numbers until it finds an available session name
-func createUniqueSession(prefix string, command []string) (string, error) {
+func createUniqueSession(ctx context.Context, prefix string, command []string) (string, error) {
 	if prefix == "" {
 		prefix = detectPrefix()
 	}
@@ -34,7 +35,7 @@ func createUniqueSession(prefix string, command []string) (string, error) {
 	}
 	
 	// Get existing sessions with this prefix
-	existingSessions, err := list("")
+	existingSessions, err := list(ctx, "")
 	if err != nil {
 		// If we can't list sessions, assume none exist
 		existingSessions = []string{}
@@ -63,15 +64,15 @@ func createUniqueSession(prefix string, command []string) (string, error) {
 		sessionName := fmt.Sprintf("%s-%d", baseName, i)
 		
 		// Try to create the session
-		var cmd *exec.Cmd
+		var err error
 		if len(command) > 0 {
 			args := append([]string{"new-session", "-d", "-s", sessionName}, command...)
-			cmd = buildTmuxCommand(args...)
+			_, err = runTmuxCommand(ctx, args...)
 		} else {
-			cmd = buildTmuxCommand("new-session", "-d", "-s", sessionName)
+			_, err = runTmuxCommand(ctx, "new-session", "-d", "-s", sessionName)
 		}
 		
-		if err := cmd.Run(); err == nil {
+		if err == nil {
 			// Success! Return the session name
 			return sessionName, nil
 		}

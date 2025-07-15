@@ -22,12 +22,12 @@ type SendControlKeysTool struct {
 }
 
 func (t *SendControlKeysTool) Handle(ctx context.Context) (interface{}, error) {
-	sessionName, err := resolveSession(t.Prefix, t.Session)
+	sessionName, err := resolveSession(ctx, t.Prefix, t.Session)
 	if err != nil {
 		return nil, fmt.Errorf("error sending control keys: %v", err)
 	}
 
-	result, err := sendKeysCommon(SendKeysOptions{
+	result, err := sendKeysCommon(ctx, SendKeysOptions{
 		SessionName: sessionName,
 		Hash:        t.Hash,
 		Keys:        t.Keys,

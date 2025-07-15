@@ -1,6 +1,7 @@
 package tmuxmcp
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"os/exec"
@@ -13,16 +14,6 @@ import (
 
 // testSocketPath is used for testing to override the default tmux socket
 var testSocketPath string
-
-// buildTmuxCommand creates a tmux command with the test socket if set
-func buildTmuxCommand(args ...string) *exec.Cmd {
-	if testSocketPath != "" {
-		// Prepend socket args
-		allArgs := append([]string{"-S", testSocketPath}, args...)
-		return exec.Command("tmux", allArgs...)
-	}
-	return exec.Command("tmux", args...)
-}
 
 // Options structs
 type newSessionOptions struct {
@@ -65,79 +56,25 @@ type killOptions struct {
 
 // Constants
 const (
-	defaultWaitTimeout = 10
 	expectWaitTimeout  = 60
 	noOutputTimeout    = 20
 	checkInterval      = 200 * time.Millisecond
 	stabilityThreshold = 500 * time.Millisecond
 )
 
-// Main functions used by Tools
-func newSession(opts newSessionOptions) (*newSessionResult, error) {
-	if opts.Prefix == "" {
-		opts.Prefix = detectPrefix()
-	}
-
-	if opts.KillOthers {
-		sessions, err := findSessionsByPrefix(opts.Prefix)
-		if err == nil {
-			for _, session := range sessions {
-				killSession(session)
-			}
-		}
-	}
-
-	if !opts.AllowMultiple {
-		existing, err := findSessionsByPrefix(opts.Prefix)
-		if err == nil && len(existing) > 0 {
-			return nil, fmt.Errorf("session with prefix '%s' already exists: %s. Use --allow-multiple or --kill-others", opts.Prefix, existing[0])
-		}
-	}
-
-	sessionName, err := createUniqueSession(opts.Prefix, opts.Command)
+func capture(ctx context.Context, opts captureOptions) (*captureResult, error) {
+	sessionName, err := resolveSession(ctx, opts.Prefix, "")
 	if err != nil {
 		return nil, err
 	}
 
-	var output string
-	var hash string
-	if opts.Expect != "" {
-		result, err := waitForExpected(sessionName, opts.Expect, opts.MaxWait)
-		if err != nil {
-			return nil, err
-		}
-		output = result.Output
-		hash = result.Hash
-	} else {
-		result, err := waitForStability(sessionName, opts.MaxWait)
-		if err != nil {
-			return nil, err
-		}
-		output = result.Output
-		hash = result.Hash
-	}
-
-	return &newSessionResult{
-		SessionName: sessionName,
-		Output:      output,
-		Hash:        hash,
-	}, nil
-}
-
-func capture(opts captureOptions) (*captureResult, error) {
-	sessionName, err := resolveSession(opts.Prefix, "")
-	if err != nil {
-		return nil, err
-	}
-
-	cmd := buildTmuxCommand("capture-pane", "-t", sessionName, "-p")
-	output, err := cmd.Output()
+	output, err := runTmuxCommand(ctx, "capture-pane", "-t", sessionName, "-p")
 	if err != nil {
 		return nil, fmt.Errorf("failed to capture session %s: %w", sessionName, err)
 	}
 
-	formatted := formatOutput(string(output))
-	hash := calculateHash(string(output))
+	formatted := formatOutput(output)
+	hash := calculateHash(output)
 
 	return &captureResult{
 		SessionName: sessionName,
@@ -146,28 +83,26 @@ func capture(opts captureOptions) (*captureResult, error) {
 	}, nil
 }
 
-func captureWithCursor(opts captureOptions) (*cursorResult, error) {
-	sessionName, err := resolveSession(opts.Prefix, "")
+func captureWithCursor(ctx context.Context, opts captureOptions) (*cursorResult, error) {
+	sessionName, err := resolveSession(ctx, opts.Prefix, "")
 	if err != nil {
 		return nil, err
 	}
 
 	// Capture output
-	captureCmd := buildTmuxCommand("capture-pane", "-t", sessionName, "-p")
-	output, err := captureCmd.Output()
+	output, err := runTmuxCommand(ctx, "capture-pane", "-t", sessionName, "-p")
 	if err != nil {
 		return nil, fmt.Errorf("failed to capture session %s: %w", sessionName, err)
 	}
 
 	// Get cursor position
-	cursorCmd := buildTmuxCommand("display-message", "-t", sessionName, "-p", "#{cursor_y}:#{cursor_x}")
-	cursorOutput, err := cursorCmd.Output()
+	cursorOutput, err := runTmuxCommand(ctx, "display-message", "-t", sessionName, "-p", "#{cursor_y}:#{cursor_x}")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cursor position for session %s: %w", sessionName, err)
 	}
 
 	// Parse cursor position
-	cursorPos := strings.TrimSpace(string(cursorOutput))
+	cursorPos := strings.TrimSpace(cursorOutput)
 	parts := strings.Split(cursorPos, ":")
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("invalid cursor position format: %s", cursorPos)
@@ -184,14 +119,14 @@ func captureWithCursor(opts captureOptions) (*cursorResult, error) {
 	}
 
 	// Extract the line where cursor is positioned
-	lines := strings.Split(string(output), "\n")
+	lines := strings.Split(output, "\n")
 	var cursorLine string
 	if cursorY >= 0 && cursorY < len(lines) {
 		cursorLine = lines[cursorY]
 	}
 
-	formatted := formatOutput(string(output))
-	hash := calculateHash(string(output))
+	formatted := formatOutput(output)
+	hash := calculateHash(output)
 
 	return &cursorResult{
 		SessionName: sessionName,
@@ -203,14 +138,13 @@ func captureWithCursor(opts captureOptions) (*cursorResult, error) {
 	}, nil
 }
 
-func list(prefix string) ([]string, error) {
-	cmd := buildTmuxCommand("list-sessions", "-F", "#{session_name}")
-	output, err := cmd.Output()
+func list(ctx context.Context, prefix string) ([]string, error) {
+	output, err := runTmuxCommand(ctx, "list-sessions", "-F", "#{session_name}")
 	if err != nil {
 		return []string{}, nil
 	}
 
-	sessions := strings.Split(strings.TrimSpace(string(output)), "\n")
+	sessions := strings.Split(strings.TrimSpace(output), "\n")
 	if prefix == "" {
 		return sessions, nil
 	}
@@ -223,19 +157,6 @@ func list(prefix string) ([]string, error) {
 	}
 
 	return filtered, nil
-}
-
-func kill(opts killOptions) (string, error) {
-	sessionName, err := resolveSession(opts.Prefix, "")
-	if err != nil {
-		return "", err
-	}
-
-	if err := killSession(sessionName); err != nil {
-		return "", err
-	}
-
-	return sessionName, nil
 }
 
 // Helper functions
@@ -275,9 +196,9 @@ func generateSessionName(prefix string, command []string) string {
 	return fmt.Sprintf("%s-%s-%d", prefix, cmdPart, timestamp%10000)
 }
 
-func resolveSession(prefix, session string) (string, error) {
+func resolveSession(ctx context.Context, prefix, session string) (string, error) {
 	if session != "" {
-		sessions, err := list("")
+		sessions, err := list(ctx, "")
 		if err != nil {
 			return "", err
 		}
@@ -293,7 +214,7 @@ func resolveSession(prefix, session string) (string, error) {
 		prefix = detectPrefix()
 	}
 
-	sessions, err := findSessionsByPrefix(prefix)
+	sessions, err := findSessionsByPrefix(ctx, prefix)
 	if err != nil {
 		return "", err
 	}
@@ -309,8 +230,8 @@ func resolveSession(prefix, session string) (string, error) {
 	return sessions[0], nil
 }
 
-func findSessionsByPrefix(prefix string) ([]string, error) {
-	sessions, err := list("")
+func findSessionsByPrefix(ctx context.Context, prefix string) ([]string, error) {
+	sessions, err := list(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -325,9 +246,9 @@ func findSessionsByPrefix(prefix string) ([]string, error) {
 	return matches, nil
 }
 
-func killSession(sessionName string) error {
-	cmd := buildTmuxCommand("kill-session", "-t", sessionName)
-	return cmd.Run()
+func killSession(ctx context.Context, sessionName string) error {
+	_, err := runTmuxCommand(ctx, "kill-session", "-t", sessionName)
+	return err
 }
 
 func formatOutput(output string) string {
@@ -363,12 +284,7 @@ func calculateHash(content string) string {
 	return fmt.Sprintf("%x", hash)[:8]
 }
 
-func waitForStability(sessionName string, maxWait time.Duration) (*captureResult, error) {
-	if maxWait == 0 {
-		maxWait = defaultWaitTimeout
-	}
-
-	timeout := time.After(maxWait)
+func waitForStability(ctx context.Context, sessionName string) (*captureResult, error) {
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
 
@@ -377,15 +293,15 @@ func waitForStability(sessionName string, maxWait time.Duration) (*captureResult
 
 	for {
 		select {
-		case <-timeout:
-			result, _ := capture(captureOptions{Prefix: sessionName})
+		case <-ctx.Done():
+			result, _ := capture(ctx, captureOptions{Prefix: sessionName})
 			if result != nil {
 				return result, nil
 			}
-			return nil, fmt.Errorf("timeout waiting for stability after %.1f seconds", float64(maxWait)/float64(time.Second))
+			return nil, fmt.Errorf("context cancelled waiting for stability: %w", ctx.Err())
 
 		case <-ticker.C:
-			result, err := capture(captureOptions{Prefix: sessionName})
+			result, err := capture(ctx, captureOptions{Prefix: sessionName})
 			if err != nil {
 				continue
 			}
@@ -400,12 +316,7 @@ func waitForStability(sessionName string, maxWait time.Duration) (*captureResult
 	}
 }
 
-func waitForExpected(sessionName, expected string, maxWait time.Duration) (*captureResult, error) {
-	if maxWait == 0 {
-		maxWait = expectWaitTimeout
-	}
-
-	timeout := time.After(maxWait)
+func waitForExpected(ctx context.Context, sessionName, expected string) (*captureResult, error) {
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
 
@@ -414,15 +325,15 @@ func waitForExpected(sessionName, expected string, maxWait time.Duration) (*capt
 
 	for {
 		select {
-		case <-timeout:
-			result, _ := capture(captureOptions{Prefix: sessionName})
+		case <-ctx.Done():
+			result, _ := capture(ctx, captureOptions{Prefix: sessionName})
 			if result != nil {
-				return result, fmt.Errorf("timeout waiting for '%s' on cursor line after %.1f seconds", expected, float64(maxWait)/float64(time.Second))
+				return result, fmt.Errorf("context cancelled waiting for '%s' on cursor line: %w", expected, ctx.Err())
 			}
-			return nil, fmt.Errorf("timeout waiting for '%s' on cursor line after %.1f seconds", expected, float64(maxWait)/float64(time.Second))
+			return nil, fmt.Errorf("context cancelled waiting for '%s' on cursor line: %w", expected, ctx.Err())
 
 		case <-ticker.C:
-			cursorResult, err := captureWithCursor(captureOptions{Prefix: sessionName})
+			cursorResult, err := captureWithCursor(ctx, captureOptions{Prefix: sessionName})
 			if err != nil {
 				continue
 			}
@@ -449,12 +360,4 @@ func waitForExpected(sessionName, expected string, maxWait time.Duration) (*capt
 			}
 		}
 	}
-}
-
-func parseKeyString(keys string, literal bool) []string {
-	if literal {
-		return []string{keys}
-	}
-
-	return strings.Fields(keys)
 }

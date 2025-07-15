@@ -10,12 +10,14 @@ import (
 
 func TestSendKeysToolLiteralMode_Integration(t *testing.T) {
 	// Create a real tmux session for testing
-	sessionName, err := createUniqueSession("test", []string{"bash"})
+	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	assert.NoError(t, err)
-	defer killSession(sessionName)
+	defer func() { killSession(t.Context(), sessionName) }()
 
 	// Get initial hash
-	result, err := waitForStability(sessionName, 1*time.Second)
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(1*time.Second))
+	defer cancel()
+	result, err := waitForStability(ctx, sessionName)
 	if err != nil {
 		t.Fatalf("Could not capture initial session state: %v", err)
 	}
@@ -30,8 +32,7 @@ func TestSendKeysToolLiteralMode_Integration(t *testing.T) {
 	tool.Prefix = sessionName
 
 	// Test the tool with a real session
-	ctx := context.Background()
-	toolResult, err := tool.Handle(ctx)
+	toolResult, err := tool.Handle(t.Context())
 	assert.NoError(t, err)
 
 	resultStr, ok := toolResult.(string)
@@ -45,33 +46,13 @@ func TestSendKeysToolLiteralMode_Integration(t *testing.T) {
 
 	// Verify keys were actually sent by capturing session
 	time.Sleep(100 * time.Millisecond)
-	afterResult, err := capture(captureOptions{Prefix: sessionName})
+	afterResult, err := capture(t.Context(), captureOptions{Prefix: sessionName})
 	if err != nil {
 		t.Fatalf("Could not capture session after sending keys: %v", err)
 	}
 
 	if !strings.Contains(afterResult.Output, "hello world with spaces") {
 		t.Errorf("Expected session to contain sent keys, got: %s", afterResult.Output)
-	}
-}
-
-func TestSendControlKeysToolControlMode(t *testing.T) {
-	tool := &SendControlKeysTool{
-		Hash: "test-hash",
-		Keys: "C-c Enter Up Down",
-		Hex:  false,
-	}
-
-	// Test that parseKeyString splits control sequences properly
-	parts := parseKeyString(tool.Keys, false)
-	expected := []string{"C-c", "Enter", "Up", "Down"}
-	if len(parts) != len(expected) {
-		t.Errorf("Expected %d parts, got %d", len(expected), len(parts))
-	}
-	for i, part := range parts {
-		if part != expected[i] {
-			t.Errorf("Expected part %d to be %s, got %s", i, expected[i], part)
-		}
 	}
 }
 
@@ -131,7 +112,7 @@ func TestSendKeysCommonValidation(t *testing.T) {
 			// We can't test the full function without a real tmux session,
 			// but we can test the validation logic
 			if tt.opts.Hash == "" {
-				_, err := sendKeysCommon(tt.opts)
+				_, err := sendKeysCommon(t.Context(), tt.opts)
 				if (err != nil) != tt.expectErr {
 					t.Errorf("Expected error: %v, got: %v", tt.expectErr, err)
 				}
@@ -143,64 +124,18 @@ func TestSendKeysCommonValidation(t *testing.T) {
 	}
 }
 
-func TestParseKeyString(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		literal  bool
-		expected []string
-	}{
-		{
-			name:     "literal mode preserves spaces",
-			input:    "hello world with spaces",
-			literal:  true,
-			expected: []string{"hello world with spaces"},
-		},
-		{
-			name:     "non-literal mode splits on spaces",
-			input:    "C-c Enter Up Down",
-			literal:  false,
-			expected: []string{"C-c", "Enter", "Up", "Down"},
-		},
-		{
-			name:     "literal mode with special characters",
-			input:    "echo 'hello world' | grep test",
-			literal:  true,
-			expected: []string{"echo 'hello world' | grep test"},
-		},
-		{
-			name:     "non-literal mode with control sequences",
-			input:    "C-x C-s M-x",
-			literal:  false,
-			expected: []string{"C-x", "C-s", "M-x"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := parseKeyString(tt.input, tt.literal)
-			if len(result) != len(tt.expected) {
-				t.Errorf("Expected %d parts, got %d", len(tt.expected), len(result))
-			}
-			for i, part := range result {
-				if i < len(tt.expected) && part != tt.expected[i] {
-					t.Errorf("Expected part %d to be '%s', got '%s'", i, tt.expected[i], part)
-				}
-			}
-		})
-	}
-}
-
 func TestSendKeysToolHandle_Integration(t *testing.T) {
 	// Create a real tmux session for testing
-	sessionName, err := createUniqueSession("test", []string{"bash"})
+	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	if err != nil {
 		t.Skipf("Could not create tmux session for testing: %v", err)
 	}
-	defer killSession(sessionName)
+	defer func() { killSession(t.Context(), sessionName) }()
 
 	// Get initial hash
-	result, err := waitForStability(sessionName, time.Second)
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(time.Second))
+	defer cancel()
+	result, err := waitForStability(ctx, sessionName)
 	if err != nil {
 		t.Fatalf("Could not capture initial session state: %v", err)
 	}
@@ -214,8 +149,7 @@ func TestSendKeysToolHandle_Integration(t *testing.T) {
 	tool.Prefix = sessionName
 
 	// Test basic structure and method existence with real session
-	ctx := context.Background()
-	toolResult, err := tool.Handle(ctx)
+	toolResult, err := tool.Handle(t.Context())
 
 	assert.NoError(t, err)
 
@@ -231,14 +165,16 @@ func TestSendKeysToolHandle_Integration(t *testing.T) {
 
 func TestSendControlKeysToolHandle_Integration(t *testing.T) {
 	// Create a real tmux session for testing
-	sessionName, err := createUniqueSession("test", []string{"bash"})
+	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	if err != nil {
 		t.Skipf("Could not create tmux session for testing: %v", err)
 	}
-	defer killSession(sessionName)
+	defer func() { killSession(t.Context(), sessionName) }()
 
 	// Get initial hash
-	result, err := waitForStability(sessionName, time.Second)
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(time.Second))
+	defer cancel()
+	result, err := waitForStability(ctx, sessionName)
 	if err != nil {
 		t.Fatalf("Could not capture initial session state: %v", err)
 	}
@@ -253,8 +189,7 @@ func TestSendControlKeysToolHandle_Integration(t *testing.T) {
 	tool.Prefix = sessionName
 
 	// Test basic structure and method existence with real session
-	ctx := context.Background()
-	toolResult, err := tool.Handle(ctx)
+	toolResult, err := tool.Handle(t.Context())
 	assert.NoError(t, err)
 
 	resultStr, ok := toolResult.(string)
@@ -303,21 +238,21 @@ func TestToolDescriptions(t *testing.T) {
 
 func TestEmptyExpectBehavior_Integration(t *testing.T) {
 	// Create a real tmux session for testing
-	sessionName, err := createUniqueSession("test", []string{"bash"})
+	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	if err != nil {
 		t.Skipf("Could not create tmux session for testing: %v", err)
 	}
-	defer killSession(sessionName)
+	defer func() { killSession(t.Context(), sessionName) }()
 
 	// Get initial hash
-	result, err := capture(captureOptions{Prefix: sessionName})
+	result, err := capture(t.Context(), captureOptions{Prefix: sessionName})
 	if err != nil {
 		t.Fatalf("Could not capture initial session state: %v", err)
 	}
 	initialHash := result.Hash
 
 	// Test empty expect - should send keys without waiting
-	emptyExpectResult, err := sendKeysCommon(SendKeysOptions{
+	emptyExpectResult, err := sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
 		Hash:        initialHash,
 		Keys:        "echo test",
@@ -340,7 +275,7 @@ func TestEmptyExpectBehavior_Integration(t *testing.T) {
 
 	// Verify keys were actually sent by capturing current state
 	time.Sleep(100 * time.Millisecond) // Brief pause for keys to be processed
-	afterResult, err := capture(captureOptions{Prefix: sessionName})
+	afterResult, err := capture(t.Context(), captureOptions{Prefix: sessionName})
 	if err != nil {
 		t.Fatalf("Could not capture session after sending keys: %v", err)
 	}
@@ -394,16 +329,18 @@ func TestEnterFlagHandling_Integration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var err error
-			tt.opts.SessionName, err = createUniqueSession("test", []string{"bash"})
+			tt.opts.SessionName, err = createUniqueSession(t.Context(), "test", []string{"bash"})
 			assert.NoError(t, err)
 
 			// Get initial hash
-			cr, err := waitForStability(tt.opts.SessionName, time.Second)
+			ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(time.Second))
+			defer cancel()
+			cr, err := waitForStability(ctx, tt.opts.SessionName)
 			assert.NoError(t, err)
 
 			tt.opts.Hash = cr.Hash
 
-			result, err := sendKeysCommon(tt.opts)
+			result, err := sendKeysCommon(t.Context(), tt.opts)
 
 			assert.NoError(t, err)
 			assert.NotNil(t, result)
@@ -418,7 +355,7 @@ func TestEnterFlagHandling_Integration(t *testing.T) {
 
 			// Verify keys were sent by capturing session
 			time.Sleep(100 * time.Millisecond)
-			afterResult, err := capture(captureOptions{Prefix: tt.opts.SessionName})
+			afterResult, err := capture(t.Context(), captureOptions{Prefix: tt.opts.SessionName})
 			if err != nil {
 				t.Fatalf("Could not capture session after sending keys: %v", err)
 			}

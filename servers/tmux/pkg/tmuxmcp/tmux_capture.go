@@ -19,7 +19,7 @@ type CaptureTool struct {
 }
 
 func (t *CaptureTool) Handle(ctx context.Context) (interface{}, error) {
-	sessionName, err := resolveSession(t.Prefix, t.Session)
+	sessionName, err := resolveSession(ctx, t.Prefix, t.Session)
 	if err != nil {
 		return nil, fmt.Errorf("error capturing session: %v", err)
 	}
@@ -31,7 +31,7 @@ func (t *CaptureTool) Handle(ctx context.Context) (interface{}, error) {
 			timeout = 10 // default 10 seconds
 		}
 
-		result, err := t.waitForHashChange(sessionName, t.WaitForChange, timeout)
+		result, err := t.waitForHashChange(ctx, sessionName, t.WaitForChange, timeout)
 		if err != nil {
 			return nil, fmt.Errorf("error waiting for content change: %v", err)
 		}
@@ -39,19 +39,18 @@ func (t *CaptureTool) Handle(ctx context.Context) (interface{}, error) {
 	}
 
 	// Standard capture without waiting
-	cmd := buildTmuxCommand( "capture-pane", "-t", sessionName, "-p")
-	output, err := cmd.Output()
+	output, err := runTmuxCommand(ctx, "capture-pane", "-t", sessionName, "-p")
 	if err != nil {
 		return nil, fmt.Errorf("error capturing session: failed to capture session %s: %v", sessionName, err)
 	}
 
-	formatted := formatOutput(string(output))
-	hash := calculateHash(string(output))
+	formatted := formatOutput(output)
+	hash := calculateHash(output)
 
 	return fmt.Sprintf("Session: %s\nHash: %s\n\n%s", sessionName, hash, formatted), nil
 }
 
-func (t *CaptureTool) waitForHashChange(sessionName, expectedHash string, maxWait float64) (interface{}, error) {
+func (t *CaptureTool) waitForHashChange(ctx context.Context, sessionName, expectedHash string, maxWait float64) (interface{}, error) {
 	timeout := time.After(time.Duration(maxWait) * time.Second)
 	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
@@ -60,26 +59,24 @@ func (t *CaptureTool) waitForHashChange(sessionName, expectedHash string, maxWai
 		select {
 		case <-timeout:
 			// Return current state even if it hasn't changed
-			cmd := buildTmuxCommand( "capture-pane", "-t", sessionName, "-p")
-			output, err := cmd.Output()
+			output, err := runTmuxCommand(ctx, "capture-pane", "-t", sessionName, "-p")
 			if err != nil {
 				return nil, fmt.Errorf("failed to capture session after timeout: %v", err)
 			}
-			formatted := formatOutput(string(output))
-			hash := calculateHash(string(output))
+			formatted := formatOutput(output)
+			hash := calculateHash(output)
 			return fmt.Sprintf("Session: %s\nHash: %s (unchanged after %.1f seconds)\n\n%s", sessionName, hash, maxWait, formatted), nil
 
 		case <-ticker.C:
-			cmd := buildTmuxCommand( "capture-pane", "-t", sessionName, "-p")
-			output, err := cmd.Output()
+			output, err := runTmuxCommand(ctx, "capture-pane", "-t", sessionName, "-p")
 			if err != nil {
 				continue // Skip this iteration if capture fails
 			}
 
-			currentHash := calculateHash(string(output))
+			currentHash := calculateHash(output)
 			if currentHash != expectedHash {
 				// Content has changed!
-				formatted := formatOutput(string(output))
+				formatted := formatOutput(output)
 				return fmt.Sprintf("Session: %s\nHash: %s (changed from %s)\n\n%s", sessionName, currentHash, expectedHash, formatted), nil
 			}
 		}

@@ -1,20 +1,22 @@
 package tmuxmcp
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCaptureWithCursor_Integration(t *testing.T) {
 	// Create a real tmux session for testing
-	sessionName, err := createUniqueSession("test", []string{"bash"})
+	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	if err != nil {
 		t.Skipf("Could not create tmux session for testing: %v", err)
 	}
-	defer killSession(sessionName)
+	defer func() { killSession(t.Context(), sessionName) }()
 	
 	// Test capturing with cursor position
-	result, err := captureWithCursor(captureOptions{Prefix: sessionName})
+	result, err := captureWithCursor(t.Context(), captureOptions{Prefix: sessionName})
 	if err != nil {
 		t.Fatalf("Expected no error for real session, got: %v", err)
 	}
@@ -46,14 +48,14 @@ func TestCaptureWithCursor_Integration(t *testing.T) {
 
 func TestWaitForExpected_CursorLineOnly_Integration(t *testing.T) {
 	// Create a real tmux session for testing
-	sessionName, err := createUniqueSession("test", []string{"bash"})
+	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	if err != nil {
 		t.Skipf("Could not create tmux session for testing: %v", err)
 	}
-	defer killSession(sessionName)
+	defer func() { killSession(t.Context(), sessionName) }()
 	
 	// Send a command that will provide a recognizable prompt
-	sendKeysCommon(SendKeysOptions{
+	sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
 		Hash:        "any", // We'll bypass hash check by using empty expect
 		Keys:        "echo 'test-marker'", 
@@ -63,7 +65,9 @@ func TestWaitForExpected_CursorLineOnly_Integration(t *testing.T) {
 	})
 	
 	// Wait for something that should appear on the cursor line
-	result, err := waitForExpected(sessionName, "test-marker", 2.0)
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(2*time.Second))
+	defer cancel()
+	result, err := waitForExpected(ctx, sessionName, "test-marker")
 	
 	// This might timeout since the output may not be on cursor line,
 	// but we're testing the function works with real sessions

@@ -75,7 +75,7 @@ func (t *BashTool) Handle(ctx context.Context) (interface{}, error) { // TODO: o
 	}
 
 	// Create tmux session with the wrapped command
-	sessionName, err := createUniqueSession(prefix, wrappedCommand)
+	sessionName, err := createUniqueSession(ctx, prefix, wrappedCommand)
 	if err != nil {
 		return nil, err
 	}
@@ -104,23 +104,23 @@ func (t *BashTool) Handle(ctx context.Context) (interface{}, error) { // TODO: o
 			if _, err := os.Stat(doneFile); err == nil {
 				// Command completed, clean up done file and handle completion
 				os.Remove(doneFile)
-				return t.handleCompletedCommand(sessionName, tmpPath, &shouldCleanup)
+				return t.handleCompletedCommand(ctx, sessionName, tmpPath, &shouldCleanup)
 			}
 
 			// Also check if session still exists (backup check)
-			if !sessionExists(sessionName) {
+			if !sessionExists(ctx, sessionName) {
 				// Session ended unexpectedly, try to get any output we can
-				return t.handleCompletedCommand(sessionName, tmpPath, &shouldCleanup)
+				return t.handleCompletedCommand(ctx, sessionName, tmpPath, &shouldCleanup)
 			}
 		}
 	}
 }
 
-func (t *BashTool) handleCompletedCommand(sessionName, tmpPath string, shouldCleanup *bool) (interface{}, error) {
+func (t *BashTool) handleCompletedCommand(ctx context.Context, sessionName, tmpPath string, shouldCleanup *bool) (interface{}, error) {
 	// Read the complete output from temp file
 	output, err := os.ReadFile(tmpPath)
 	if err != nil {
-		killSession(sessionName)
+		killSession(ctx, sessionName)
 		return nil, fmt.Errorf("failed to read command output: %w", err)
 	}
 
@@ -136,7 +136,7 @@ func (t *BashTool) handleCompletedCommand(sessionName, tmpPath string, shouldCle
 	os.Remove(exitCodeFile)
 
 	// Kill the session since we're done
-	killSession(sessionName)
+	killSession(ctx, sessionName)
 
 	outputStr := string(output)
 	lines := strings.Split(outputStr, "\n")
@@ -184,7 +184,7 @@ func (t *BashTool) handleCompletedCommand(sessionName, tmpPath string, shouldCle
 	}
 }
 
-func sessionExists(sessionName string) bool {
-	cmd := buildTmuxCommand("has-session", "-t", sessionName)
-	return cmd.Run() == nil
+func sessionExists(ctx context.Context, sessionName string) bool {
+	_, err := runTmuxCommand(ctx, "has-session", "-t", sessionName)
+	return err == nil
 }

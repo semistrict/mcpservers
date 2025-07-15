@@ -206,7 +206,7 @@ func TestBashTool_Handle_ContextCancellation(t *testing.T) {
 		Timeout:          5,
 	}
 
-	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(500*time.Millisecond))
 	defer cancel()
 
 	result, err := tool.Handle(ctx)

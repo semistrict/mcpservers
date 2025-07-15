@@ -34,35 +34,48 @@ func (t *NewSessionTool) Handle(ctx context.Context) (interface{}, error) {
 	}
 
 	if t.KillOthers {
-		sessions, err := findSessionsByPrefix(prefix)
+		sessions, err := findSessionsByPrefix(ctx, prefix)
 		if err == nil {
 			for _, session := range sessions {
-				killSession(session)
+				killSession(ctx, session)
 			}
 		}
 	}
 
 	if !t.AllowMultiple {
-		existing, err := findSessionsByPrefix(prefix)
+		existing, err := findSessionsByPrefix(ctx, prefix)
 		if err == nil && len(existing) > 0 {
 			return nil, fmt.Errorf("session with prefix '%s' already exists: %s. Use --allow-multiple or --kill-others", prefix, existing[0])
 		}
 	}
 
-	sessionName, err := createUniqueSession(prefix, t.Command)
+	sessionName, err := createUniqueSession(ctx, prefix, t.Command)
 	if err != nil {
 		return nil, err
 	}
 
 	var output string
 	if t.Expect != "" {
-		result, err := waitForExpected(sessionName, t.Expect, maxWait)
+		ctxWithTimeout := ctx
+		if maxWait > 0 {
+			var cancel context.CancelFunc
+			ctxWithTimeout, cancel = context.WithDeadline(ctx, time.Now().Add(maxWait))
+			defer cancel()
+		}
+		result, err := waitForExpected(ctxWithTimeout, sessionName, t.Expect)
 		if err != nil {
 			return nil, fmt.Errorf("error creating session: %v", err)
 		}
 		output = result.Output
 	} else {
-		result, err := waitForStability(sessionName, maxWait)
+		// Create context with timeout for stability wait
+		ctxWithTimeout := ctx
+		if maxWait > 0 {
+			var cancel context.CancelFunc
+			ctxWithTimeout, cancel = context.WithDeadline(ctx, time.Now().Add(maxWait))
+			defer cancel()
+		}
+		result, err := waitForStability(ctxWithTimeout, sessionName)
 		if err != nil {
 			return nil, fmt.Errorf("error creating session: %v", err)
 		}

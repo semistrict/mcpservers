@@ -17,21 +17,17 @@ type ListTool struct {
 }
 
 func (t *ListTool) Handle(ctx context.Context) (interface{}, error) {
-	cmd := buildTmuxCommand( "list-sessions", "-F", "#{session_name}")
-	output, err := cmd.Output()
+	output, err := runTmuxCommand(ctx, "list-sessions", "-F", "#{session_name}")
 	if err != nil {
 		// No sessions exist
-		sessions := []string{}
-		if len(sessions) == 0 {
-			result := "No tmux sessions found"
-			if t.Prefix != "" {
-				result += fmt.Sprintf(" with prefix '%s'", t.Prefix)
-			}
-			return result, nil
+		result := "No tmux sessions found"
+		if t.Prefix != "" {
+			result += fmt.Sprintf(" with prefix '%s'", t.Prefix)
 		}
+		return result, nil
 	}
 
-	sessions := strings.Split(strings.TrimSpace(string(output)), "\n")
+	sessions := strings.Split(strings.TrimSpace(output), "\n")
 	if t.Prefix != "" {
 		var filtered []string
 		for _, session := range sessions {

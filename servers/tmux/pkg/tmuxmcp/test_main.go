@@ -1,6 +1,7 @@
 package tmuxmcp
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,8 +53,8 @@ func cleanupTestSocket() error {
 	}
 	
 	// Kill any tmux sessions using our test socket
-	cmd := buildTmuxCommand("kill-server")
-	cmd.Run() // Ignore errors - server might not be running
+	ctx := context.Background()
+	_, _ = runTmuxCommand(ctx, "kill-server") // Ignore errors - server might not be running
 	
 	// Remove the socket directory
 	socketDir := filepath.Dir(testSocketPath)

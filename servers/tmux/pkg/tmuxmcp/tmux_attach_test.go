@@ -1,7 +1,6 @@
 package tmuxmcp
 
 import (
-	"context"
 	"strings"
 	"testing"
 )
@@ -13,8 +12,7 @@ func TestAttachTool_Handle_SessionNotFound(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
-	_, err := tool.Handle(ctx)
+	_, err := tool.Handle(t.Context())
 
 	if err == nil {
 		t.Error("Expected error for nonexistent session")
@@ -32,8 +30,7 @@ func TestAttachTool_Handle_SessionResolution(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
-	_, err := tool.Handle(ctx)
+	_, err := tool.Handle(t.Context())
 
 	// Should fail due to session not existing, but should get past session resolution
 	if err == nil {
@@ -62,8 +59,7 @@ func TestAttachTool_ToolInfo(t *testing.T) {
 	// Test that the tool is properly registered and has correct metadata
 	tool := &AttachTool{}
 	
-	ctx := context.Background()
-	_, err := tool.Handle(ctx)
+	_, err := tool.Handle(t.Context())
 	
 	// We expect this to fail because we don't have a real session
 	// but we can verify the method exists and has the right signature
