@@ -117,12 +117,12 @@ func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 
 		fieldName := strings.Split(jsonTag, ",")[0]
 		description := field.Tag.Get("description")
-		required := strings.Contains(field.Tag.Get("json"), "required")
+		required := field.Tag.Get("mcp") == "required"
 		defaultValue := field.Tag.Get("default")
-		
+
 		// Validate that description doesn't contain "default:" - should use separate tag
 		if strings.Contains(strings.ToLower(description), "default:") {
-			panic(fmt.Sprintf("Field %s.%s: description contains 'default:' - use separate 'default' struct tag instead", 
+			panic(fmt.Sprintf("Field %s.%s: description contains 'default:' - use separate 'default' struct tag instead",
 				toolType.Name(), field.Name))
 		}
 
@@ -138,7 +138,7 @@ func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 				paramOptions = append(paramOptions, mcp.DefaultString(defaultValue))
 			}
 			options = append(options, mcp.WithString(fieldName, paramOptions...))
-			
+
 		case reflect.Bool:
 			var paramOptions []mcp.PropertyOption
 			paramOptions = append(paramOptions, mcp.Description(description))
@@ -150,7 +150,7 @@ func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 				}
 			}
 			options = append(options, mcp.WithBoolean(fieldName, paramOptions...))
-			
+
 		case reflect.Int, reflect.Int64, reflect.Float64:
 			var paramOptions []mcp.PropertyOption
 			paramOptions = append(paramOptions, mcp.Description(description))
@@ -166,7 +166,7 @@ func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 		case reflect.Slice:
 			if field.Type.Elem().Kind() == reflect.String {
 				// Array of strings - specify items as string type
-				options = append(options, mcp.WithArray(fieldName, 
+				options = append(options, mcp.WithArray(fieldName,
 					mcp.Description(description),
 					mcp.WithStringItems(),
 				))

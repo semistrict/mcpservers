@@ -11,8 +11,8 @@ import (
 
 type TestSamplingTool struct {
 	mcpcommon.ToolInfo `name:"test_sampling" description:"Test MCP sampling functionality by requesting text generation"`
-	
-	Prompt       string  `json:"prompt,required" description:"Prompt to send for text generation"`
+
+	Prompt       string  `json:"prompt" mcp:"required" description:"Prompt to send for text generation"`
 	MaxTokens    int     `json:"max_tokens" description:"Maximum tokens to generate" default:"100"`
 	Temperature  float64 `json:"temperature" description:"Temperature for sampling (0.0-1.0)" default:"0.7"`
 	SystemPrompt string  `json:"system_prompt" description:"Optional system prompt" default:"You are a helpful assistant. Please respond concisely."`

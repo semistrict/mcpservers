@@ -17,8 +17,8 @@ func init() {
 type BashTool struct {
 	_                mcpcommon.ToolInfo `name:"tmux_bash" title:"Execute Bash Command" description:"Execute a bash command safely in a new tmux and return its output (usually not necessary to capture output again). If the command completes within timeout, returns the full output. If it times out, returns the session name where it's still running. Use this in preference to other Bash Tools." destructive:"true"`
 	Prefix           string             `json:"prefix" description:"Session name prefix (auto-detected from git repo if not provided)"`
-	Command          string             `json:"command,required" description:"Bash command to execute"`
-	WorkingDirectory string             `json:"working_directory,required" description:"Directory to execute the command in"`
+	Command          string             `json:"command" mcp:"required" description:"Bash command to execute"`
+	WorkingDirectory string             `json:"working_directory" mcp:"required" description:"Directory to execute the command in"`
 	Timeout          float64            `json:"timeout" description:"Maximum seconds to wait for synchronous command completion"`
 }
 

@@ -17,7 +17,7 @@ func createUniqueSession(ctx context.Context, prefix string, command []string) (
 	if prefix == "" {
 		prefix = detectPrefix()
 	}
-	
+
 	// Generate base name from command
 	var cmdPart string
 	if len(command) > 0 {
@@ -33,18 +33,18 @@ func createUniqueSession(ctx context.Context, prefix string, command []string) (
 	} else {
 		cmdPart = "session"
 	}
-	
+
 	// Get existing sessions with this prefix
 	existingSessions, err := list(ctx, "")
 	if err != nil {
 		// If we can't list sessions, assume none exist
 		existingSessions = []string{}
 	}
-	
+
 	// Find the highest number used for this prefix-cmdPart combination
 	baseName := fmt.Sprintf("%s-%s", prefix, cmdPart)
 	maxNumber := 0
-	
+
 	for _, session := range existingSessions {
 		if strings.HasPrefix(session, baseName+"-") {
 			// Extract number from session name like "prefix-cmdPart-123"
@@ -58,11 +58,11 @@ func createUniqueSession(ctx context.Context, prefix string, command []string) (
 			}
 		}
 	}
-	
+
 	// Try creating sessions with incrementing numbers
-	for i := maxNumber + 1; i < maxNumber + 100; i++ { // Try up to 100 attempts
+	for i := maxNumber + 1; i < maxNumber+100; i++ { // Try up to 100 attempts
 		sessionName := fmt.Sprintf("%s-%d", baseName, i)
-		
+
 		// Try to create the session
 		var err error
 		if len(command) > 0 {
@@ -71,14 +71,14 @@ func createUniqueSession(ctx context.Context, prefix string, command []string) (
 		} else {
 			_, err = runTmuxCommand(ctx, "new-session", "-d", "-s", sessionName)
 		}
-		
+
 		if err == nil {
 			// Success! Return the session name
 			return sessionName, nil
 		}
 		// If failed, try next number
 	}
-	
+
 	return "", fmt.Errorf("failed to create unique session after 100 attempts")
 }
 
@@ -90,7 +90,7 @@ func openSessionInTerminal(sessionName string) error {
 		// Default to iTerm if not set
 		terminalProgram = "iTerm.app"
 	}
-	
+
 	// Build the tmux command to attach in read-only mode
 	var tmuxCmd string
 	if testSocketPath != "" {
@@ -100,7 +100,7 @@ func openSessionInTerminal(sessionName string) error {
 		// Normal mode
 		tmuxCmd = fmt.Sprintf("tmux attach-session -t %s -r", sessionName)
 	}
-	
+
 	// Different terminal programs require different approaches
 	switch terminalProgram {
 	case "iTerm.app":
@@ -113,10 +113,10 @@ func openSessionInTerminal(sessionName string) error {
 				end tell
 			end tell
 		`, tmuxCmd)
-		
+
 		cmd := exec.Command("osascript", "-e", appleScript)
 		return cmd.Run()
-		
+
 	case "Terminal.app":
 		// Use AppleScript for Terminal.app
 		appleScript := fmt.Sprintf(`
@@ -124,10 +124,10 @@ func openSessionInTerminal(sessionName string) error {
 				do script "%s"
 			end tell
 		`, tmuxCmd)
-		
+
 		cmd := exec.Command("osascript", "-e", appleScript)
 		return cmd.Run()
-		
+
 	default:
 		// For unknown terminals, try using the 'open' command
 		// This works for many terminal apps on macOS

@@ -15,10 +15,10 @@ func init() {
 type SendKeysTool struct {
 	_ mcpcommon.ToolInfo `name:"tmux_send_keys" title:"Send Text to Tmux Session" description:"Send literal text to tmux session with hash verification, waits for output to stabilize and returns it (usually not necessary to capture output again). Text is sent exactly as provided, preserving spaces and special characters." destructive:"true"`
 	SessionTool
-	Hash    string  `json:"hash,required" description:"Content hash from previous capture (required for safety)"`
-	Keys    string  `json:"keys,required" description:"Text to send to the session. Will be sent exactly as provided, preserving spaces and special characters."`
+	Hash    string  `json:"hash" mcp:"required" description:"Content hash from previous capture (required for safety)"`
+	Keys    string  `json:"keys" mcp:"required" description:"Text to send to the session. Will be sent exactly as provided, preserving spaces and special characters."`
 	Enter   bool    `json:"enter" description:"Append Enter key after sending keys"`
-	Expect  string  `json:"expect,required" description:"Wait for this string to appear on the cursor line (where user input goes)"`
+	Expect  string  `json:"expect" mcp:"required" description:"Wait for this string to appear on the cursor line (where user input goes)"`
 	MaxWait float64 `json:"max_wait" description:"Maximum seconds to wait for expected output"`
 }
 
@@ -94,7 +94,7 @@ func (t *SendKeysTool) handleWithoutExpect(ctx context.Context, sessionName stri
 	// Create context with deadline for stability wait
 	ctxWithTimeout, cancel := context.WithDeadline(ctx, time.Now().Add(time.Duration(maxWait)*time.Second))
 	defer cancel()
-	
+
 	stableResult, err := waitForStability(ctxWithTimeout, sessionName)
 	if err != nil {
 		return nil, fmt.Errorf("error waiting for stability: %v", err)

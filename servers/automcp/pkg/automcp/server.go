@@ -16,10 +16,10 @@ func init() {
 
 func Run() error {
 	s := server.NewMCPServer("automcp", "1.0.0")
-	
+
 	// Enable sampling capability
 	s.EnableSampling()
-	
+
 	s.AddTools(Tools...)
 	return server.ServeStdio(s)
 }

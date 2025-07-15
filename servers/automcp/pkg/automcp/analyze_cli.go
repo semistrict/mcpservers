@@ -16,8 +16,8 @@ import (
 
 type AnalyzeCliTool struct {
 	mcpcommon.ToolInfo `name:"analyze_cli" description:"Analyze a CLI command's help output and generate MCP tool definitions"`
-	
-	Command     string   `json:"command,required" description:"CLI command to analyze (e.g., 'docker', 'git', 'kubectl')"`
+
+	Command     string   `json:"command" mcp:"required" description:"CLI command to analyze (e.g., 'docker', 'git', 'kubectl')"`
 	HelpFlags   []string `json:"help_flags" description:"Help flags to try"`
 	Subcommand  string   `json:"subcommand" description:"Optional subcommand to analyze (e.g., 'docker build')"`
 	MaxTokens   int      `json:"max_tokens" description:"Maximum tokens for AI analysis" default:"4000"`
@@ -29,10 +29,10 @@ type AnalyzeCliTool struct {
 
 // AIResponse represents the expected structure from the AI
 type AIResponse struct {
-	Tools        []ToolDefinition `json:"tools"`
-	Summary      string           `json:"summary"`
-	IsLeaf       bool             `json:"is_leaf"`
-	Subcommands  []string         `json:"subcommands,omitempty"`
+	Tools       []ToolDefinition `json:"tools"`
+	Summary     string           `json:"summary"`
+	IsLeaf      bool             `json:"is_leaf"`
+	Subcommands []string         `json:"subcommands,omitempty"`
 }
 
 // CommandAnalysis tracks the analysis of a command tree
@@ -49,10 +49,10 @@ type CommandAnalysis struct {
 
 // ToolDefinition represents a single MCP tool definition
 type ToolDefinition struct {
-	Name            string                    `json:"name"`
-	Description     string                    `json:"description"`
-	Parameters      map[string]ParameterDef   `json:"parameters"`
-	CommandTemplate string                    `json:"command_template"`
+	Name            string                  `json:"name"`
+	Description     string                  `json:"description"`
+	Parameters      map[string]ParameterDef `json:"parameters"`
+	CommandTemplate string                  `json:"command_template"`
 }
 
 // ParameterDef represents a parameter definition
@@ -114,66 +114,66 @@ func (t *AnalyzeCliTool) analyzeCommandTree(ctx context.Context) ([]CommandAnaly
 	var allAnalyses []CommandAnalysis
 	var allWarnings []string
 	requestCount := 0
-	
+
 	// Start with the root command
 	rootAnalysis, warnings, err := t.analyzeSingleCommand(ctx, t.Subcommand, 0)
 	if err != nil {
 		return nil, warnings, err
 	}
-	
+
 	requestCount++
 	allAnalyses = append(allAnalyses, *rootAnalysis)
 	allWarnings = append(allWarnings, warnings...)
-	
+
 	// Queue for breadth-first traversal
 	type queueItem struct {
 		subcommand string
 		depth      int
 	}
-	
+
 	queue := make([]queueItem, 0)
 	for _, subcmd := range rootAnalysis.Subcommands {
 		queue = append(queue, queueItem{subcmd, 1})
 	}
-	
+
 	// Process all subcommands
 	for len(queue) > 0 {
 		item := queue[0]
 		queue = queue[1:]
-		
+
 		// Skip if we've reached max depth
 		if item.depth >= t.MaxDepth {
 			allWarnings = append(allWarnings, fmt.Sprintf("Skipping '%s': reached max depth %d", item.subcommand, t.MaxDepth))
 			continue
 		}
-		
+
 		// Skip if we've reached max requests
 		if requestCount >= t.MaxRequests {
 			allWarnings = append(allWarnings, fmt.Sprintf("Stopping analysis: reached max requests limit (%d). %d commands remain in queue", t.MaxRequests, len(queue)+1))
 			break
 		}
-		
+
 		analysis, warnings, err := t.analyzeSingleCommand(ctx, item.subcommand, item.depth)
 		requestCount++
-		
+
 		if err != nil {
 			allWarnings = append(allWarnings, fmt.Sprintf("Failed to analyze '%s': %v", item.subcommand, err))
 			continue
 		}
-		
+
 		allAnalyses = append(allAnalyses, *analysis)
 		allWarnings = append(allWarnings, warnings...)
-		
+
 		// Add subcommands to queue
 		for _, subcmd := range analysis.Subcommands {
 			fullSubcmd := item.subcommand + " " + subcmd
 			queue = append(queue, queueItem{fullSubcmd, item.depth + 1})
 		}
 	}
-	
+
 	// Add summary of request usage
 	allWarnings = append(allWarnings, fmt.Sprintf("Total sampling requests used: %d/%d", requestCount, t.MaxRequests))
-	
+
 	return allAnalyses, allWarnings, nil
 }
 
@@ -183,7 +183,7 @@ func (t *AnalyzeCliTool) analyzeSingleCommand(ctx context.Context, subcommand st
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get help output: %v", err)
 	}
-	
+
 	// Analyze with AI
 	aiResponse, warnings := t.analyzeWithAI(ctx, helpOutput, subcommand, depth)
 	if aiResponse == nil {
@@ -194,12 +194,12 @@ func (t *AnalyzeCliTool) analyzeSingleCommand(ctx context.Context, subcommand st
 		}
 		return nil, warnings, fmt.Errorf("AI analysis failed for command '%s'.%s", subcommand, warningText)
 	}
-	
+
 	fullPath := t.Command
 	if subcommand != "" {
 		fullPath = t.Command + " " + subcommand
 	}
-	
+
 	analysis := &CommandAnalysis{
 		Command:     t.Command,
 		Subcommand:  subcommand,
@@ -210,7 +210,7 @@ func (t *AnalyzeCliTool) analyzeSingleCommand(ctx context.Context, subcommand st
 		IsLeaf:      aiResponse.IsLeaf,
 		Depth:       depth,
 	}
-	
+
 	return analysis, warnings, nil
 }
 
@@ -219,9 +219,9 @@ func (t *AnalyzeCliTool) getHelpOutputForSubcommand(subcommand string) (string, 
 	if !IsCommandSafe(t.Command) {
 		return "", fmt.Errorf("command '%s' is blocked for security reasons", t.Command)
 	}
-	
+
 	var cmdArgs []string
-	
+
 	// Build command with subcommand
 	if subcommand != "" {
 		cmdArgs = append(cmdArgs, strings.Fields(subcommand)...)
@@ -234,7 +234,7 @@ func (t *AnalyzeCliTool) getHelpOutputForSubcommand(subcommand string) (string, 
 	var lastErr error
 	for _, helpFlag := range t.HelpFlags {
 		args := append(cmdArgs, helpFlag)
-		
+
 		output, err := executor.ExecuteCommand(t.Command, args)
 		if err == nil && len(output) > 0 {
 			return string(output), nil
@@ -243,10 +243,6 @@ func (t *AnalyzeCliTool) getHelpOutputForSubcommand(subcommand string) (string, 
 	}
 
 	return "", fmt.Errorf("failed to get help output after trying flags %v: %v", t.HelpFlags, lastErr)
-}
-
-func (t *AnalyzeCliTool) getHelpOutput() (string, error) {
-	return t.getHelpOutputForSubcommand(t.Subcommand)
 }
 
 func (t *AnalyzeCliTool) analyzeWithAI(ctx context.Context, helpOutput, subcommand string, depth int) (*AIResponse, []string) {
@@ -322,7 +318,7 @@ Rules:
 	}
 
 	aiResponseText := getTextFromContent(result.Content)
-	
+
 	// Add debug info to warnings
 	extractedJSON := t.extractJSON(aiResponseText)
 	debugWarnings := []string{
@@ -330,21 +326,21 @@ Rules:
 		fmt.Sprintf("Extracted JSON length: %d characters", len(extractedJSON)),
 		fmt.Sprintf("Full extracted JSON: %s", extractedJSON),
 	}
-	
+
 	// Validate and parse the AI response
 	aiResponse, validationErrors := t.validateAIResponse(aiResponseText)
-	
+
 	// Combine debug and validation warnings
 	allWarnings := append(debugWarnings, validationErrors...)
-	
+
 	return aiResponse, allWarnings
 }
 
 func (t *AnalyzeCliTool) formatResults(analyses []CommandAnalysis, warnings []string) string {
 	var response strings.Builder
-	
+
 	response.WriteString(fmt.Sprintf("# CLI Analysis Tree for: %s\n\n", t.Command))
-	
+
 	if len(warnings) > 0 {
 		response.WriteString("## Validation Warnings\n")
 		for _, warning := range warnings {
@@ -352,7 +348,7 @@ func (t *AnalyzeCliTool) formatResults(analyses []CommandAnalysis, warnings []st
 		}
 		response.WriteString("\n")
 	}
-	
+
 	// Summary statistics
 	totalTools := 0
 	leafCommands := 0
@@ -362,12 +358,12 @@ func (t *AnalyzeCliTool) formatResults(analyses []CommandAnalysis, warnings []st
 			leafCommands++
 		}
 	}
-	
-	response.WriteString(fmt.Sprintf("## Summary\n"))
+
+	response.WriteString("## Summary\n")
 	response.WriteString(fmt.Sprintf("- **Total Commands Analyzed:** %d\n", len(analyses)))
 	response.WriteString(fmt.Sprintf("- **Leaf Commands:** %d\n", leafCommands))
 	response.WriteString(fmt.Sprintf("- **Total Tools Generated:** %d\n\n", totalTools))
-	
+
 	// Command tree structure
 	response.WriteString("## Command Tree\n")
 	for _, analysis := range analyses {
@@ -379,23 +375,23 @@ func (t *AnalyzeCliTool) formatResults(analyses []CommandAnalysis, warnings []st
 		}
 	}
 	response.WriteString("\n")
-	
+
 	// All generated tools
 	response.WriteString("## Generated MCP Tools\n\n")
 	for _, analysis := range analyses {
 		if len(analysis.Tools) > 0 {
 			response.WriteString(fmt.Sprintf("### %s\n\n", analysis.FullPath))
-			
+
 			toolsJSON, err := json.MarshalIndent(analysis.Tools, "", "  ")
 			if err == nil {
 				response.WriteString(fmt.Sprintf("```json\n%s\n```\n\n", string(toolsJSON)))
 			}
-			
+
 			// Add template execution examples
 			response.WriteString("**Template Examples:**\n\n")
 			for _, tool := range analysis.Tools {
 				response.WriteString(fmt.Sprintf("- **%s**: `%s`\n", tool.Name, tool.CommandTemplate))
-				
+
 				// Show example execution with default values
 				exampleParams := make(map[string]interface{})
 				for paramName, param := range tool.Parameters {
@@ -413,7 +409,7 @@ func (t *AnalyzeCliTool) formatResults(analyses []CommandAnalysis, warnings []st
 						}
 					}
 				}
-				
+
 				if len(exampleParams) > 0 {
 					if execResult, err := ExecuteCommandTemplate(tool.CommandTemplate, exampleParams); err == nil {
 						response.WriteString(fmt.Sprintf("  - Example: `%s`\n", execResult))
@@ -423,14 +419,13 @@ func (t *AnalyzeCliTool) formatResults(analyses []CommandAnalysis, warnings []st
 			response.WriteString("\n")
 		}
 	}
-	
+
 	return response.String()
 }
 
-
 func (t *AnalyzeCliTool) validateAIResponse(responseText string) (*AIResponse, []string) {
 	var warnings []string
-	
+
 	// Try to extract JSON from the response (in case it's wrapped in markdown)
 	jsonText := t.extractJSON(responseText)
 	if jsonText == "" {
@@ -443,8 +438,7 @@ func (t *AnalyzeCliTool) validateAIResponse(responseText string) (*AIResponse, [
 			Subcommands: []string{},
 		}, warnings
 	}
-	
-	
+
 	// Parse JSON
 	var aiResponse AIResponse
 	if err := json.Unmarshal([]byte(jsonText), &aiResponse); err != nil {
@@ -457,73 +451,72 @@ func (t *AnalyzeCliTool) validateAIResponse(responseText string) (*AIResponse, [
 			Subcommands: []string{},
 		}, warnings
 	}
-	
+
 	// Validate structure - but don't fail completely
 	if len(aiResponse.Tools) == 0 && len(aiResponse.Subcommands) == 0 {
 		warnings = append(warnings, "No tools or subcommands found in response")
 		aiResponse.IsLeaf = true // Default to leaf if unclear
 	}
-	
+
 	// Validate each tool
 	validTools := make([]ToolDefinition, 0, len(aiResponse.Tools))
 	for i, tool := range aiResponse.Tools {
 		toolWarnings := t.validateTool(tool, i)
 		warnings = append(warnings, toolWarnings...)
-		
+
 		// Clean up tool name
 		tool.Name = t.sanitizeToolName(tool.Name)
-		
+
 		// Only include valid tools
 		if tool.Name != "" && tool.Description != "" && tool.CommandTemplate != "" {
 			validTools = append(validTools, tool)
 		}
 	}
-	
+
 	aiResponse.Tools = validTools
-	
+
 	if len(validTools) == 0 {
 		warnings = append(warnings, "No valid tools after validation")
 	}
-	
+
 	return &aiResponse, warnings
 }
 
 func (t *AnalyzeCliTool) extractJSON(text string) string {
 	// Since we're asking for pure JSON, just trim whitespace
 	trimmed := strings.TrimSpace(text)
-	
+
 	// If it starts and ends with braces, return as-is
 	if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") {
 		return trimmed
 	}
-	
+
 	// Try to find the first { and last } in the text as fallback
 	firstBrace := strings.Index(text, "{")
 	lastBrace := strings.LastIndex(text, "}")
 	if firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace {
 		return strings.TrimSpace(text[firstBrace : lastBrace+1])
 	}
-	
+
 	// Return original text if no JSON structure found
 	return trimmed
 }
 
-
 func (t *AnalyzeCliTool) validateTool(tool ToolDefinition, index int) []string {
 	var warnings []string
-	
+
 	if tool.Name == "" {
 		warnings = append(warnings, fmt.Sprintf("Tool %d: missing name", index))
 	}
-	
+
 	if tool.Description == "" {
 		warnings = append(warnings, fmt.Sprintf("Tool %d (%s): missing description", index, tool.Name))
 	}
-	
+
 	if tool.CommandTemplate == "" {
 		warnings = append(warnings, fmt.Sprintf("Tool %d (%s): missing command template", index, tool.Name))
 	}
-	
+
 	// Validate parameter types
 	for paramName, param := range tool.Parameters {
 		if param.Type == "" {
@@ -531,12 +524,12 @@ func (t *AnalyzeCliTool) validateTool(tool ToolDefinition, index int) []string {
 		} else if !t.isValidParameterType(param.Type) {
 			warnings = append(warnings, fmt.Sprintf("Tool %d (%s): parameter '%s' has invalid type '%s'", index, tool.Name, paramName, param.Type))
 		}
-		
+
 		if param.Description == "" {
 			warnings = append(warnings, fmt.Sprintf("Tool %d (%s): parameter '%s' missing description", index, tool.Name, paramName))
 		}
 	}
-	
+
 	return warnings
 }
 
@@ -546,12 +539,12 @@ func (t *AnalyzeCliTool) sanitizeToolName(name string) string {
 	sanitized := reg.ReplaceAllString(name, "_")
 	sanitized = strings.ToLower(sanitized)
 	sanitized = strings.Trim(sanitized, "_")
-	
+
 	// Ensure it doesn't start with a number
 	if len(sanitized) > 0 && sanitized[0] >= '0' && sanitized[0] <= '9' {
 		sanitized = "cmd_" + sanitized
 	}
-	
+
 	return sanitized
 }
 
@@ -573,12 +566,12 @@ func ExecuteCommandTemplate(commandTemplate string, params map[string]interface{
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template: %v", err)
 	}
-	
+
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, params); err != nil {
 		return "", fmt.Errorf("failed to execute template: %v", err)
 	}
-	
+
 	// Clean up extra whitespace
 	command := strings.Join(strings.Fields(buf.String()), " ")
 	return command, nil

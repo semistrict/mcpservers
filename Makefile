@@ -1,6 +1,6 @@
 # Makefile for tmux-mcp project
 
-.PHONY: all build test clean install help lint fmt vet
+.PHONY: all build test clean install help lint fmt vet staticcheck
 
 # Default target
 all: build test
@@ -68,6 +68,17 @@ vet:
 	@echo "Vetting code..."
 	go vet ./...
 
+# Run staticcheck
+staticcheck:
+	@echo "Running staticcheck..."
+	@if command -v staticcheck >/dev/null 2>&1; then \
+		staticcheck ./...; \
+	elif [ -f "$$(go env GOPATH)/bin/staticcheck" ]; then \
+		$$(go env GOPATH)/bin/staticcheck ./...; \
+	else \
+		echo "staticcheck not found. Install with: go install honnef.co/go/tools/cmd/staticcheck@latest"; \
+	fi
+
 # Clean build artifacts
 clean:
 	@echo "Cleaning..."
@@ -94,14 +105,14 @@ help-automcp:
 	@echo "Showing automcp help..."
 	./bin/automcp -h
 
-# Run quick checks (format, vet, build, test)
-check: fmt vet build test
+# Run quick checks (format, vet, staticcheck, build, test)
+check: fmt vet staticcheck build test
 
 # Development workflow
 dev: clean check
 
 # CI workflow
-ci: fmt-check vet build test-tmux-short
+ci: fmt-check vet staticcheck build test-tmux-short
 
 # Show available targets
 help:
@@ -116,10 +127,11 @@ help:
 	@echo "  fmt           - Format code"
 	@echo "  fmt-check     - Check if code is properly formatted (for CI)"
 	@echo "  vet           - Vet code"
+	@echo "  staticcheck   - Run staticcheck static analyzer"
 	@echo "  clean         - Remove build artifacts"
 	@echo "  install       - Install binaries to GOPATH/bin"
 	@echo "  help-tmux     - Show tmux-mcp help"
-	@echo "  check         - Run fmt, vet, build, test"
+	@echo "  check         - Run fmt, vet, staticcheck, build, test"
 	@echo "  dev           - Clean and run checks (development workflow)"
-	@echo "  ci            - CI workflow (fmt-check, vet, build, test-short)"
+	@echo "  ci            - CI workflow (fmt-check, vet, staticcheck, build, test-short)"
 	@echo "  help          - Show this help"

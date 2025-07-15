@@ -18,7 +18,7 @@ func runTmuxCommand(ctx context.Context, args ...string) (string, error) {
 	} else {
 		cmd = exec.CommandContext(ctx, "tmux", args...)
 	}
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(output), fmt.Errorf("tmux command failed: %w\nOutput: %s", err, string(output))

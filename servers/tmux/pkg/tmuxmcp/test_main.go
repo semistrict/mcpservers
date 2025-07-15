@@ -34,15 +34,15 @@ func setupTestSocket() error {
 	// Create a unique socket name for this test run
 	timestamp := time.Now().UnixNano()
 	socketName := fmt.Sprintf("tmuxmcp-test-%d", timestamp)
-	
+
 	// Create temp directory for socket
 	tmpDir, err := os.MkdirTemp("", "tmuxmcp-test-")
 	if err != nil {
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
-	
+
 	testSocketPath = filepath.Join(tmpDir, socketName)
-	
+
 	return nil
 }
 
@@ -51,18 +51,18 @@ func cleanupTestSocket() error {
 	if testSocketPath == "" {
 		return nil
 	}
-	
+
 	// Kill any tmux sessions using our test socket
 	ctx := context.Background()
 	_, _ = runTmuxCommand(ctx, "kill-server") // Ignore errors - server might not be running
-	
+
 	// Remove the socket directory
 	socketDir := filepath.Dir(testSocketPath)
 	if err := os.RemoveAll(socketDir); err != nil {
 		return fmt.Errorf("failed to remove socket directory: %w", err)
 	}
-	
+
 	testSocketPath = ""
-	
+
 	return nil
 }

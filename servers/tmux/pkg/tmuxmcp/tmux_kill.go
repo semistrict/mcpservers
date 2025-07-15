@@ -13,7 +13,7 @@ func init() {
 type KillTool struct {
 	_ mcpcommon.ToolInfo `name:"tmux_kill" title:"Kill Tmux Session" description:"Kill a tmux session" destructive:"true"`
 	SessionTool
-	Hash string `json:"hash,required" description:"Content hash from previous capture (required for safety)"`
+	Hash string `json:"hash" mcp:"required" description:"Content hash from previous capture (required for safety)"`
 }
 
 func (t *KillTool) Handle(ctx context.Context) (any, error) {

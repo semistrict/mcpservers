@@ -11,10 +11,9 @@ import (
 
 // GeneratedTool wraps a ToolDefinition with execution capability
 type GeneratedTool struct {
-	Definition ToolDefinition
+	Definition  ToolDefinition
 	BaseCommand string // The original CLI command (e.g., "docker", "git")
 }
-
 
 // ToolGenerator converts AI analysis results into executable MCP tools
 type ToolGenerator struct {
@@ -31,7 +30,7 @@ func NewToolGenerator() *ToolGenerator {
 // GenerateServerTools converts ToolDefinitions into actual server.ServerTool instances
 func (g *ToolGenerator) GenerateServerTools(analyses []CommandAnalysis) ([]server.ServerTool, error) {
 	var serverTools []server.ServerTool
-	
+
 	for _, analysis := range analyses {
 		for _, toolDef := range analysis.Tools {
 			serverTool, err := g.createServerTool(toolDef, analysis.Command)
@@ -41,7 +40,7 @@ func (g *ToolGenerator) GenerateServerTools(analyses []CommandAnalysis) ([]serve
 			serverTools = append(serverTools, serverTool)
 		}
 	}
-	
+
 	return serverTools, nil
 }
 
@@ -49,10 +48,10 @@ func (g *ToolGenerator) GenerateServerTools(analyses []CommandAnalysis) ([]serve
 func (g *ToolGenerator) createServerTool(toolDef ToolDefinition, baseCommand string) (server.ServerTool, error) {
 	// Create MCP tool schema
 	var options []mcp.ToolOption
-	
+
 	// Add description
 	options = append(options, mcp.WithDescription(toolDef.Description))
-	
+
 	// Add parameters
 	for paramName, param := range toolDef.Parameters {
 		switch param.Type {
@@ -68,7 +67,7 @@ func (g *ToolGenerator) createServerTool(toolDef ToolDefinition, baseCommand str
 				paramOptions = append(paramOptions, mcp.Required())
 			}
 			options = append(options, mcp.WithString(paramName, paramOptions...))
-			
+
 		case "number":
 			var paramOptions []mcp.PropertyOption
 			paramOptions = append(paramOptions, mcp.Description(param.Description))
@@ -81,7 +80,7 @@ func (g *ToolGenerator) createServerTool(toolDef ToolDefinition, baseCommand str
 				paramOptions = append(paramOptions, mcp.Required())
 			}
 			options = append(options, mcp.WithNumber(paramName, paramOptions...))
-			
+
 		case "boolean":
 			var paramOptions []mcp.PropertyOption
 			paramOptions = append(paramOptions, mcp.Description(param.Description))
@@ -93,15 +92,15 @@ func (g *ToolGenerator) createServerTool(toolDef ToolDefinition, baseCommand str
 			options = append(options, mcp.WithBoolean(paramName, paramOptions...))
 		}
 	}
-	
+
 	// Create the MCP tool
 	tool := mcp.NewTool(toolDef.Name, options...)
-	
+
 	// Create the handler function
 	handler := func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return g.executeGeneratedTool(ctx, toolDef, baseCommand, request)
 	}
-	
+
 	return server.ServerTool{
 		Tool:    tool,
 		Handler: handler,
@@ -113,7 +112,7 @@ func (g *ToolGenerator) executeGeneratedTool(ctx context.Context, toolDef ToolDe
 	// Extract parameters from request
 	params := make(map[string]interface{})
 	arguments := request.GetArguments()
-	
+
 	// Set parameter values from request, with defaults as fallback
 	for paramName, paramDef := range toolDef.Parameters {
 		if value, exists := arguments[paramName]; exists {
@@ -132,7 +131,7 @@ func (g *ToolGenerator) executeGeneratedTool(ctx context.Context, toolDef ToolDe
 			}, nil
 		}
 	}
-	
+
 	// Execute the command template
 	command, err := ExecuteCommandTemplate(toolDef.CommandTemplate, params)
 	if err != nil {
@@ -146,7 +145,7 @@ func (g *ToolGenerator) executeGeneratedTool(ctx context.Context, toolDef ToolDe
 			IsError: true,
 		}, nil
 	}
-	
+
 	// Parse the command into parts
 	commandParts := strings.Fields(command)
 	if len(commandParts) == 0 {
@@ -160,11 +159,11 @@ func (g *ToolGenerator) executeGeneratedTool(ctx context.Context, toolDef ToolDe
 			IsError: true,
 		}, nil
 	}
-	
+
 	// Execute the command safely
 	mainCommand := commandParts[0]
 	args := commandParts[1:]
-	
+
 	output, err := g.executor.ExecuteCommand(mainCommand, args)
 	if err != nil {
 		return &mcp.CallToolResult{
@@ -177,7 +176,7 @@ func (g *ToolGenerator) executeGeneratedTool(ctx context.Context, toolDef ToolDe
 			IsError: true,
 		}, nil
 	}
-	
+
 	// Return successful result
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
@@ -194,15 +193,15 @@ func (g *ToolGenerator) ValidateToolDefinition(toolDef ToolDefinition) error {
 	if toolDef.Name == "" {
 		return fmt.Errorf("tool name is required")
 	}
-	
+
 	if toolDef.Description == "" {
 		return fmt.Errorf("tool description is required")
 	}
-	
+
 	if toolDef.CommandTemplate == "" {
 		return fmt.Errorf("command template is required")
 	}
-	
+
 	// Validate template syntax
 	testParams := make(map[string]interface{})
 	for paramName, param := range toolDef.Parameters {
@@ -215,11 +214,11 @@ func (g *ToolGenerator) ValidateToolDefinition(toolDef ToolDefinition) error {
 			testParams[paramName] = true
 		}
 	}
-	
+
 	_, err := ExecuteCommandTemplate(toolDef.CommandTemplate, testParams)
 	if err != nil {
 		return fmt.Errorf("invalid command template: %v", err)
 	}
-	
+
 	return nil
 }

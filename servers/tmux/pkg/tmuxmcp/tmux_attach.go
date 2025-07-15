@@ -44,7 +44,7 @@ func (t *AttachTool) Handle(ctx context.Context) (interface{}, error) {
 				end tell
 			end tell
 		`, sessionName))
-		
+
 		err = cmd.Run()
 		if err != nil {
 			// Fall back to Terminal.app
@@ -64,7 +64,7 @@ func (t *AttachTool) Handle(ctx context.Context) (interface{}, error) {
 			{"konsole", "-e", "tmux", "attach-session", "-t", sessionName},
 			{"xterm", "-e", "tmux", "attach-session", "-t", sessionName},
 		}
-		
+
 		var lastErr error
 		for _, termCmd := range terminals {
 			cmd = exec.Command(termCmd[0], termCmd[1:]...)

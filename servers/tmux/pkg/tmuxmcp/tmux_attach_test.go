@@ -58,15 +58,15 @@ func TestAttachTool_Handle_BasicStructure(t *testing.T) {
 func TestAttachTool_ToolInfo(t *testing.T) {
 	// Test that the tool is properly registered and has correct metadata
 	tool := &AttachTool{}
-	
+
 	_, err := tool.Handle(t.Context())
-	
+
 	// We expect this to fail because we don't have a real session
 	// but we can verify the method exists and has the right signature
 	if err == nil {
 		t.Error("Expected error due to missing session")
 	}
-	
+
 	// The error should be about session resolution or session not existing
 	if !strings.Contains(err.Error(), "session") {
 		t.Errorf("Expected error about session, got: %v", err)

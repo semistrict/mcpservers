@@ -16,21 +16,6 @@ import (
 var testSocketPath string
 
 // Options structs
-type newSessionOptions struct {
-	Command       []string
-	Prefix        string
-	Expect        string
-	KillOthers    bool
-	AllowMultiple bool
-	MaxWait       time.Duration
-}
-
-type newSessionResult struct {
-	SessionName string
-	Output      string
-	Hash        string
-}
-
 type captureOptions struct {
 	Prefix string
 }
@@ -48,10 +33,6 @@ type cursorResult struct {
 	CursorX     int
 	Output      string
 	Hash        string
-}
-
-type killOptions struct {
-	Prefix string
 }
 
 // Constants
@@ -174,26 +155,6 @@ func detectPrefix() string {
 	sanitized := reg.ReplaceAllString(repoName, "-")
 
 	return sanitized
-}
-
-func generateSessionName(prefix string, command []string) string {
-	var cmdPart string
-	if len(command) > 0 {
-		cmdBase := filepath.Base(command[0])
-		if len(cmdBase) > 10 {
-			cmdBase = cmdBase[:10]
-		}
-		reg := regexp.MustCompile(`[^a-zA-Z0-9]`)
-		cmdPart = reg.ReplaceAllString(cmdBase, "")
-		if cmdPart == "" {
-			cmdPart = "session"
-		}
-	} else {
-		cmdPart = "session"
-	}
-
-	timestamp := time.Now().Unix()
-	return fmt.Sprintf("%s-%s-%d", prefix, cmdPart, timestamp%10000)
 }
 
 func resolveSession(ctx context.Context, prefix, session string) (string, error) {
