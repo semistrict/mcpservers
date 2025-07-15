@@ -244,10 +244,12 @@ func TestEmptyExpectBehavior_Integration(t *testing.T) {
 	}
 	defer func() { killSession(t.Context(), sessionName) }()
 
-	// Get initial hash
-	result, err := capture(t.Context(), captureOptions{Prefix: sessionName})
+	// Wait for session to stabilize before getting hash
+	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(2*time.Second))
+	defer cancel()
+	result, err := waitForStability(ctx, sessionName)
 	if err != nil {
-		t.Fatalf("Could not capture initial session state: %v", err)
+		t.Fatalf("Could not wait for session stability: %v", err)
 	}
 	initialHash := result.Hash
 
