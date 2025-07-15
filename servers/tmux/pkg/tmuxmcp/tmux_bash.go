@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/semistrict/mcpservers/pkg/mcpcommon"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -16,15 +15,20 @@ func init() {
 }
 
 type BashTool struct {
-	_ mcpcommon.ToolInfo `name:"tmux_bash" title:"Execute Bash Command" description:"Execute a bash command safely in tmux. If the command returns before timeout, this tool returns the output of the command. Otherwise, it returns the tmux session with it still running. Use this in preference to other Bash Tools." destructive:"false"`
-	SessionTool
-	Command string  `json:"command,required" description:"Bash command to execute"`
-	Timeout float64 `json:"timeout" description:"Maximum seconds to wait for synchronous command completion"`
+	_                mcpcommon.ToolInfo `name:"tmux_bash" title:"Execute Bash Command" description:"Execute a bash command safely in a new tmux and return its output (usually not necessary to capture output again). If the command completes within timeout, returns the full output. If it times out, returns the session name where it's still running. Use this in preference to other Bash Tools." destructive:"true"`
+	Prefix           string             `json:"prefix" description:"Session name prefix (auto-detected from git repo if not provided)"`
+	Command          string             `json:"command,required" description:"Bash command to execute"`
+	WorkingDirectory string             `json:"working_directory,required" description:"Directory to execute the command in"`
+	Timeout          float64            `json:"timeout" description:"Maximum seconds to wait for synchronous command completion"`
 }
 
 func (t *BashTool) Handle(ctx context.Context) (interface{}, error) { // TODO: output only the first 50 lines of command output and if it is longer mention the temp file wheere the rest of the output can be found
 	if t.Command == "" {
 		return nil, fmt.Errorf("command is required")
+	}
+
+	if t.WorkingDirectory == "" {
+		return nil, fmt.Errorf("working_directory is required")
 	}
 
 	timeout := t.Timeout
@@ -37,11 +41,8 @@ func (t *BashTool) Handle(ctx context.Context) (interface{}, error) { // TODO: o
 		prefix = detectPrefix()
 	}
 
-	// Generate unique session name for this command
-	sessionName := generateSessionName(prefix, []string{"bash", "-c", t.Command})
-
 	// Create temporary file to capture all output
-	tmpFile, err := os.CreateTemp("", fmt.Sprintf("tmux-bash-%s-*.log", sessionName))
+	tmpFile, err := os.CreateTemp("", fmt.Sprintf("tmux-bash-%s-*.log", prefix))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary file: %w", err)
 	}
@@ -60,11 +61,13 @@ func (t *BashTool) Handle(ctx context.Context) (interface{}, error) { // TODO: o
 	// We'll wrap the original command in a bash script that tees both stdout and stderr
 	// and keeps the session alive until we can read the results
 	cmdStr := t.Command
+	workingDir := strconv.Quote(t.WorkingDirectory)
 	escapedTmpPath := strconv.Quote(tmpPath)
 
 	wrappedCommand := []string{
 		"bash", "-c",
-		fmt.Sprintf("set -o pipefail; (%s) 2>&1 | tee %s; EXIT_CODE=${PIPESTATUS[0]}; echo $EXIT_CODE > %s.exit; echo 'COMMAND_COMPLETED' > %s.done; sleep 1",
+		fmt.Sprintf("set -o pipefail; cd %s && (%s) 2>&1 | tee %s; EXIT_CODE=${PIPESTATUS[0]}; echo $EXIT_CODE > %s.exit; echo 'COMMAND_COMPLETED' > %s.done; sleep 1",
+			workingDir,
 			cmdStr,
 			escapedTmpPath,
 			escapedTmpPath,
@@ -72,19 +75,9 @@ func (t *BashTool) Handle(ctx context.Context) (interface{}, error) { // TODO: o
 	}
 
 	// Create tmux session with the wrapped command
-	args := append([]string{"new-session", "-d", "-s", sessionName}, wrappedCommand...)
-	cmd := exec.Command("tmux", args...)
-
-	if err := cmd.Run(); err != nil {
-		if err := cleanupTmuxTempFiles(); err == nil {
-			if retryErr := cmd.Run(); retryErr == nil {
-				// Success on retry
-			} else {
-				return nil, fmt.Errorf("failed to create session even after cleanup: %w", retryErr)
-			}
-		} else {
-			return nil, fmt.Errorf("failed to create session: %w", err)
-		}
+	sessionName, err := createUniqueSession(prefix, wrappedCommand)
+	if err != nil {
+		return nil, err
 	}
 
 	// Wait for completion or timeout
@@ -192,6 +185,6 @@ func (t *BashTool) handleCompletedCommand(sessionName, tmpPath string, shouldCle
 }
 
 func sessionExists(sessionName string) bool {
-	cmd := exec.Command("tmux", "has-session", "-t", sessionName)
+	cmd := buildTmuxCommand("has-session", "-t", sessionName)
 	return cmd.Run() == nil
 }

@@ -1,0 +1,2 @@
+- do not cd into subdirectories
+- run make build after code changes

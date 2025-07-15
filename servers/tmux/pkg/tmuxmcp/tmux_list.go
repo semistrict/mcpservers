@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/semistrict/mcpservers/pkg/mcpcommon"
-	"os/exec"
 	"strings"
 )
 
@@ -13,12 +12,12 @@ func init() {
 }
 
 type ListTool struct {
-	_ mcpcommon.ToolInfo `name:"tmux_list" title:"List Tmux Sessions" description:"List all tmux sessions" destructive:"false"`
+	_ mcpcommon.ToolInfo `name:"tmux_list" title:"List Tmux Sessions" description:"List all tmux sessions" destructive:"false" readonly:"true"`
 	SessionTool
 }
 
 func (t *ListTool) Handle(ctx context.Context) (interface{}, error) {
-	cmd := exec.Command("tmux", "list-sessions", "-F", "#{session_name}")
+	cmd := buildTmuxCommand( "list-sessions", "-F", "#{session_name}")
 	output, err := cmd.Output()
 	if err != nil {
 		// No sessions exist

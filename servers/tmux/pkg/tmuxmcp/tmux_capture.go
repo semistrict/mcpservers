@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/semistrict/mcpservers/pkg/mcpcommon"
-	"os/exec"
 	"time"
 )
 
@@ -13,7 +12,7 @@ func init() {
 }
 
 type CaptureTool struct {
-	_ mcpcommon.ToolInfo `name:"tmux_capture" title:"Capture Tmux Session" description:"Capture output from tmux session with content hash" destructive:"false"`
+	_ mcpcommon.ToolInfo `name:"tmux_capture" title:"Capture Tmux Session" description:"Capture output from tmux session with content hash" destructive:"false" readonly:"true"`
 	SessionTool
 	WaitForChange string  `json:"wait_for_change" description:"Optional hash to wait for content to change from"`
 	Timeout       float64 `json:"timeout" description:"Maximum seconds to wait for content change" default:"10"`
@@ -40,7 +39,7 @@ func (t *CaptureTool) Handle(ctx context.Context) (interface{}, error) {
 	}
 
 	// Standard capture without waiting
-	cmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p")
+	cmd := buildTmuxCommand( "capture-pane", "-t", sessionName, "-p")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("error capturing session: failed to capture session %s: %v", sessionName, err)
@@ -61,7 +60,7 @@ func (t *CaptureTool) waitForHashChange(sessionName, expectedHash string, maxWai
 		select {
 		case <-timeout:
 			// Return current state even if it hasn't changed
-			cmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p")
+			cmd := buildTmuxCommand( "capture-pane", "-t", sessionName, "-p")
 			output, err := cmd.Output()
 			if err != nil {
 				return nil, fmt.Errorf("failed to capture session after timeout: %v", err)
@@ -71,7 +70,7 @@ func (t *CaptureTool) waitForHashChange(sessionName, expectedHash string, maxWai
 			return fmt.Sprintf("Session: %s\nHash: %s (unchanged after %.1f seconds)\n\n%s", sessionName, hash, maxWait, formatted), nil
 
 		case <-ticker.C:
-			cmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p")
+			cmd := buildTmuxCommand( "capture-pane", "-t", sessionName, "-p")
 			output, err := cmd.Output()
 			if err != nil {
 				continue // Skip this iteration if capture fails

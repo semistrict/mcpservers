@@ -15,11 +15,6 @@ type GeneratedTool struct {
 	BaseCommand string // The original CLI command (e.g., "docker", "git")
 }
 
-// Handle implements the ToolHandler interface for generated tools
-func (g *GeneratedTool) Handle(ctx context.Context) (interface{}, error) {
-	// This would be implemented by the dynamic tool creation
-	return nil, fmt.Errorf("dynamic tool execution not yet implemented")
-}
 
 // ToolGenerator converts AI analysis results into executable MCP tools
 type ToolGenerator struct {

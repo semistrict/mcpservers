@@ -21,12 +21,13 @@ func ReflectTool[T ToolHandler]() server.ServerTool {
 	}
 
 	// Get tool metadata from ToolInfo field
-	toolName, toolTitle, toolDescription, isDestructive := parseToolInfo(toolType)
+	toolName, toolTitle, toolDescription, isDestructive, isReadOnly := parseToolInfo(toolType)
 
 	// Create the tool with basic info
 	options := []mcp.ToolOption{
 		mcp.WithDescription(toolDescription),
 		mcp.WithDestructiveHintAnnotation(isDestructive),
+		mcp.WithReadOnlyHintAnnotation(isReadOnly),
 	}
 
 	// Add title if provided
@@ -73,7 +74,7 @@ func ReflectTool[T ToolHandler]() server.ServerTool {
 	}
 }
 
-func parseToolInfo(toolType reflect.Type) (name, title, description string, destructive bool) {
+func parseToolInfo(toolType reflect.Type) (name, title, description string, destructive, readonly bool) {
 	for i := 0; i < toolType.NumField(); i++ {
 		field := toolType.Field(i)
 		if field.Type == reflect.TypeOf(ToolInfo{}) {
@@ -81,6 +82,7 @@ func parseToolInfo(toolType reflect.Type) (name, title, description string, dest
 			title = field.Tag.Get("title")
 			description = field.Tag.Get("description")
 			destructive = field.Tag.Get("destructive") == "true"
+			readonly = field.Tag.Get("readonly") == "true"
 			return
 		}
 	}

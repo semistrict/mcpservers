@@ -14,7 +14,6 @@ func TestCaptureTool_Handle_BasicCapture(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Skipf("Skipping test: could not create tmux session: %v", err)
 	}
-	defer killSession(sessionName)
 
 	// Send some content to the session
 	exec.Command("tmux", "send-keys", "-t", sessionName, "echo 'test output'", "Enter").Run()
@@ -56,7 +55,6 @@ func TestCaptureTool_Handle_WaitForChange_ContentChanges(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Skipf("Skipping test: could not create tmux session: %v", err)
 	}
-	defer killSession(sessionName)
 
 	// Send initial content
 	exec.Command("tmux", "send-keys", "-t", sessionName, "echo 'initial content'", "Enter").Run()
@@ -114,7 +112,6 @@ func TestCaptureTool_Handle_WaitForChange_Timeout(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Skipf("Skipping test: could not create tmux session: %v", err)
 	}
-	defer killSession(sessionName)
 
 	// Send static content
 	exec.Command("tmux", "send-keys", "-t", sessionName, "echo 'static content'", "Enter").Run()
@@ -162,7 +159,6 @@ func TestCaptureTool_Handle_WaitForChange_DefaultTimeout(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Skipf("Skipping test: could not create tmux session: %v", err)
 	}
-	defer killSession(sessionName)
 
 	// Send some content
 	exec.Command("tmux", "send-keys", "-t", sessionName, "echo 'test'", "Enter").Run()

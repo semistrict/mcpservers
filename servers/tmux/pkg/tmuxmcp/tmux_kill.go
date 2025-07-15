@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/semistrict/mcpservers/pkg/mcpcommon"
-	"os/exec"
 )
 
 func init() {
@@ -28,7 +27,7 @@ func (t *KillTool) Handle(ctx context.Context) (any, error) {
 	}
 
 	// Verify current hash by capturing current state
-	captureCmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p")
+	captureCmd := buildTmuxCommand("capture-pane", "-t", sessionName, "-p")
 	captureOutput, err := captureCmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify session state: failed to capture session %s: %v", sessionName, err)
@@ -36,7 +35,7 @@ func (t *KillTool) Handle(ctx context.Context) (any, error) {
 
 	currentHash := calculateHash(string(captureOutput))
 	if currentHash != t.Hash {
-		return nil, fmt.Errorf("session state has changed. Expected hash %s, got %s. Please capture current output first and carefully consider whether you still want to kill this session.", t.Hash, currentHash)
+		return nil, fmt.Errorf("session state has changed. Please capture current output first and carefully consider whether you still want to kill this session")
 	}
 
 	if err := killSession(sessionName); err != nil {

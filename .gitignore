@@ -42,3 +42,4 @@ tmp_*
 mcptest
 mcpwrapper
 tmux-mcpgo.work
+bin/

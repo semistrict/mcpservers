@@ -11,7 +11,9 @@ import (
 
 func TestBashTool_Handle_Success(t *testing.T) {
 	tool := &BashTool{
-		Prefix:           "test",
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
 		Command:          "echo 'hello world'",
 		WorkingDirectory: "/tmp",
 		Timeout:          2,
@@ -40,7 +42,9 @@ func TestBashTool_Handle_Success(t *testing.T) {
 
 func TestBashTool_Handle_Failure(t *testing.T) {
 	tool := &BashTool{
-		Prefix:           "test",
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
 		Command:          "false", // command that always fails
 		WorkingDirectory: "/tmp",
 		Timeout:          2,
@@ -65,10 +69,11 @@ func TestBashTool_Handle_Failure(t *testing.T) {
 
 func TestBashTool_Handle_Timeout(t *testing.T) {
 	tool := &BashTool{
-		Prefix:           "test",
-		Command:          "sleep 3", // command that runs longer than timeout
-		WorkingDirectory: "/tmp",
-		Timeout:          0.5, // 0.5 second timeout
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
+		Command: "sleep 3", // command that runs longer than timeout
+		Timeout: 0.5,       // 0.5 second timeout
 	}
 
 	ctx := t.Context()
@@ -90,7 +95,9 @@ func TestBashTool_Handle_Timeout(t *testing.T) {
 
 func TestBashTool_Handle_EmptyCommand(t *testing.T) {
 	tool := &BashTool{
-		Prefix:  "test",
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
 		Command: "", // empty command
 		Timeout: 5,
 	}
@@ -109,10 +116,11 @@ func TestBashTool_Handle_EmptyCommand(t *testing.T) {
 
 func TestBashTool_Handle_DefaultTimeout(t *testing.T) {
 	tool := &BashTool{
-		Prefix:           "test",
-		Command:          "echo test",
-		WorkingDirectory: "/tmp",
-		Timeout:          2, // Override default for testing
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
+		Command: "echo test",
+		Timeout: 2, // Override default for testing
 	}
 
 	ctx := t.Context()
@@ -134,10 +142,11 @@ func TestBashTool_Handle_DefaultTimeout(t *testing.T) {
 
 func TestBashTool_Handle_ComplexOutput(t *testing.T) {
 	tool := &BashTool{
-		Prefix:           "test",
-		Command:          "echo 'line1'; echo 'line2' >&2; echo 'line3'", // mixed stdout/stderr
-		WorkingDirectory: "/tmp",
-		Timeout:          2,
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
+		Command: "echo 'line1'; echo 'line2' >&2; echo 'line3'", // mixed stdout/stderr
+		Timeout: 2,
 	}
 
 	ctx := t.Context()
@@ -168,10 +177,11 @@ func TestBashTool_Handle_SpecialCharacters(t *testing.T) {
 	// Test with a string that has special characters but no variables to expand
 	specialString := `hello "world" with 'quotes' and \backslashes`
 	tool := &BashTool{
-		Prefix:           "test",
-		Command:          fmt.Sprintf("echo %s", strconv.Quote(specialString)),
-		WorkingDirectory: "/tmp",
-		Timeout:          2,
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
+		Command: fmt.Sprintf("echo %s", strconv.Quote(specialString)),
+		Timeout: 2,
 	}
 
 	ctx := t.Context()
@@ -200,10 +210,11 @@ func TestBashTool_Handle_SpecialCharacters(t *testing.T) {
 
 func TestBashTool_Handle_ContextCancellation(t *testing.T) {
 	tool := &BashTool{
-		Prefix:           "test",
-		Command:          "sleep 2",
-		WorkingDirectory: "/tmp",
-		Timeout:          5,
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
+		Command: "sleep 2",
+		Timeout: 5,
 	}
 
 	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
@@ -224,10 +235,11 @@ func TestBashTool_Handle_ContextCancellation(t *testing.T) {
 func TestBashTool_Handle_OutputLimitingShort(t *testing.T) {
 	// Test with output less than 50 lines - should show all output
 	tool := &BashTool{
-		Prefix:           "test",
-		Command:          "for i in {1..10}; do echo \"Line $i\"; done",
-		WorkingDirectory: "/tmp",
-		Timeout:          5,
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
+		Command: "for i in {1..10}; do echo \"Line $i\"; done",
+		Timeout: 5,
 	}
 
 	ctx := t.Context()
@@ -263,10 +275,11 @@ func TestBashTool_Handle_OutputLimitingShort(t *testing.T) {
 func TestBashTool_Handle_OutputLimitingLong(t *testing.T) {
 	// Test with output more than 50 lines - should truncate and provide temp file
 	tool := &BashTool{
-		Prefix:           "test",
-		Command:          "for i in {1..100}; do echo \"Line $i\"; done",
-		WorkingDirectory: "/tmp",
-		Timeout:          10,
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
+		Command: "for i in {1..100}; do echo \"Line $i\"; done",
+		Timeout: 10,
 	}
 
 	ctx := t.Context()
@@ -310,10 +323,11 @@ func TestBashTool_Handle_OutputLimitingLong(t *testing.T) {
 func TestBashTool_Handle_OutputLimitingExactly50Lines(t *testing.T) {
 	// Test with exactly 50 lines - should show all without truncation
 	tool := &BashTool{
-		Prefix:           "test",
-		Command:          "for i in {1..50}; do echo \"Line $i\"; done",
-		WorkingDirectory: "/tmp",
-		Timeout:          5,
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
+		Command: "for i in {1..50}; do echo \"Line $i\"; done",
+		Timeout: 5,
 	}
 
 	ctx := t.Context()
@@ -343,44 +357,14 @@ func TestBashTool_Handle_OutputLimitingExactly50Lines(t *testing.T) {
 	}
 }
 
-func TestBashTool_Handle_WorkingDirectory(t *testing.T) {
-	// Test that commands execute in the specified working directory
-	tool := &BashTool{
-		Prefix:           "test",
-		Command:          "pwd", // Print working directory
-		WorkingDirectory: "/tmp",
-		Timeout:          2,
-	}
-
-	ctx := t.Context()
-	result, err := tool.Handle(ctx)
-
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	resultStr, ok := result.(string)
-	if !ok {
-		t.Fatalf("Expected string result, got: %T", result)
-	}
-
-	// Should contain /tmp as the working directory
-	if !strings.Contains(resultStr, "/tmp") {
-		t.Errorf("Expected output to contain '/tmp', got: %s", resultStr)
-	}
-
-	if !strings.Contains(resultStr, "Command completed successfully") {
-		t.Errorf("Expected success message, got: %s", resultStr)
-	}
-}
-
 func TestBashTool_Handle_OutputLimiting51Lines(t *testing.T) {
 	// Test with 51 lines - should truncate to 50
 	tool := &BashTool{
-		Prefix:           "test",
-		Command:          "for i in {1..51}; do echo \"Line $i\"; done",
-		WorkingDirectory: "/tmp",
-		Timeout:          5,
+		SessionTool: SessionTool{
+			Prefix: "test",
+		},
+		Command: "for i in {1..51}; do echo \"Line $i\"; done",
+		Timeout: 5,
 	}
 
 	ctx := t.Context()
