@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -17,13 +16,20 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	fmt.Printf("Test socket path: %s\n", testSocketPath)
+
 	// Run tests
 	code := m.Run()
 
-	// Teardown: Clean up test socket
-	if err := cleanupTestSocket(); err != nil {
-		fmt.Printf("Failed to cleanup test socket: %v\n", err)
-		// Don't exit with error on cleanup failure
+	// Only clean up test socket if tests passed
+	if code == 0 {
+		// Teardown: Clean up test socket
+		if err := cleanupTestSocket(); err != nil {
+			fmt.Printf("Failed to cleanup test socket: %v\n", err)
+			// Don't exit with error on cleanup failure
+		}
+	} else {
+		fmt.Printf("Tests failed - preserving test socket at %s for debugging\n", testSocketPath)
 	}
 
 	os.Exit(code)
@@ -32,16 +38,10 @@ func TestMain(m *testing.M) {
 // setupTestSocket creates a test-specific tmux socket
 func setupTestSocket() error {
 	// Create a unique socket name for this test run
-	timestamp := time.Now().UnixNano()
-	socketName := fmt.Sprintf("tmuxmcp-test-%d", timestamp)
-
-	// Create temp directory for socket
-	tmpDir, err := os.MkdirTemp("", "tmuxmcp-test-")
-	if err != nil {
-		return fmt.Errorf("failed to create temp directory: %w", err)
-	}
-
-	testSocketPath = filepath.Join(tmpDir, socketName)
+	// Use Unix timestamp and process ID for uniqueness
+	timestamp := time.Now().Unix()
+	pid := os.Getpid()
+	testSocketPath = fmt.Sprintf("/tmp/tmux-test-%d-%d", timestamp, pid)
 
 	return nil
 }
@@ -56,10 +56,9 @@ func cleanupTestSocket() error {
 	ctx := context.Background()
 	_, _ = runTmuxCommand(ctx, "kill-server") // Ignore errors - server might not be running
 
-	// Remove the socket directory
-	socketDir := filepath.Dir(testSocketPath)
-	if err := os.RemoveAll(socketDir); err != nil {
-		return fmt.Errorf("failed to remove socket directory: %w", err)
+	// Remove the socket file if it exists
+	if err := os.Remove(testSocketPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove socket file: %w", err)
 	}
 
 	testSocketPath = ""

@@ -18,15 +18,6 @@ Advanced tmux session management with safety features:
 
 See [servers/tmux/README.md](servers/tmux/README.md) for detailed documentation.
 
-### Automcp Server (`servers/automcp/`)
-
-Automation and testing tools for MCP functionality:
-
-- **Sampling testing**: Test MCP sampling functionality with configurable parameters
-- **Model preferences**: Support for cost, speed, and intelligence priorities
-- **Flexible prompting**: Customizable prompts and generation parameters
-
-**Tools**: `test_sampling`
 
 ## Development
 
@@ -45,8 +36,6 @@ make help               # Show all available targets
 make dev                # Clean, format, vet, build, and test
 make check              # Format, vet, build, and test
 make test-tmux          # Run only tmux tests
-make help-tmux          # Show tmux-mcp tool help
-make help-automcp       # Show automcp tool help
 ```
 
 ### CI/CD
@@ -70,9 +59,6 @@ Build a specific server:
 ```bash
 # Tmux server
 go build -o tmux-mcp ./servers/tmux/cmd/tmux-mcp
-
-# Automcp server
-go build -o automcp ./servers/automcp/cmd/automcp
 
 # MCP testing utility
 go build -o mcptest ./cmd/mcptest

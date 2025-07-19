@@ -70,7 +70,7 @@ func sendKeysCommon(ctx context.Context, opts SendKeysOptions) (*SendKeysResult,
 		opts.MaxWait = 10
 	}
 
-	// For non-empty expect, do hash verification
+	// For non-empty contains, do hash verification
 	if err := verifySessionHash(ctx, opts.SessionName, opts.Hash); err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func sendKeysCommon(ctx context.Context, opts SendKeysOptions) (*SendKeysResult,
 		return nil, err
 	}
 
-	// Handle output based on expect parameter
+	// Handle output based on contains parameter
 	if opts.Expect != "" {
 		// Wait for expected text on cursor line and return output
 		maxWait := opts.MaxWait
@@ -99,7 +99,7 @@ func sendKeysCommon(ctx context.Context, opts SendKeysOptions) (*SendKeysResult,
 			Hash:        result.Hash,
 		}, nil
 	} else {
-		// No expect parameter - just send keys and return without waiting or output
+		// No contains parameter - just send keys and return without waiting or output
 		return &SendKeysResult{
 			SessionName: opts.SessionName,
 			Output:      "",

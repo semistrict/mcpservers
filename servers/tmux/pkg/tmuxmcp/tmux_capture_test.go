@@ -1,25 +1,27 @@
 package tmuxmcp
 
 import (
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCaptureTool_Handle_BasicCapture(t *testing.T) {
-	// Create a test session that stays alive
-	sessionName := "test-capture-basic"
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", sessionName)
-	if err := cmd.Run(); err != nil {
-		t.Skipf("Skipping test: could not create tmux session: %v", err)
+	sessionName, err := createUniqueSession(t.Context(), "test-capture-basic", []string{"bash"})
+	if !assert.NoError(t, err, "Failed to create unique session") {
+		return
 	}
 
-	// Send some content to the session
-	exec.Command("tmux", "send-keys", "-t", sessionName, "echo 'test output'", "Enter").Run()
-
-	// Wait for command to complete
-	time.Sleep(200 * time.Millisecond)
+	err = sendKeysToSession(t.Context(), SendKeysOptions{
+		SessionName: sessionName,
+		Keys:        "echo 'test output'",
+		Enter:       true,
+	})
+	if !assert.NoError(t, err, "Failed to send keys to session") {
+		return
+	}
 
 	tool := &CaptureTool{
 		SessionTool: SessionTool{
@@ -27,8 +29,7 @@ func TestCaptureTool_Handle_BasicCapture(t *testing.T) {
 		},
 	}
 
-	ctx := t.Context()
-	result, err := tool.Handle(ctx)
+	result, err := tool.Handle(t.Context())
 
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
@@ -50,30 +51,36 @@ func TestCaptureTool_Handle_BasicCapture(t *testing.T) {
 
 func TestCaptureTool_Handle_WaitForChange_ContentChanges(t *testing.T) {
 	// Create a test session that will change content
-	sessionName := "test-capture-change"
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", sessionName)
-	if err := cmd.Run(); err != nil {
-		t.Skipf("Skipping test: could not create tmux session: %v", err)
+	sessionName, err := createUniqueSession(t.Context(), "test-capture-change", []string{"bash"})
+	if err != nil {
+		t.Fatalf("Could not create tmux session: %v", err)
 	}
 
 	// Send initial content
-	exec.Command("tmux", "send-keys", "-t", sessionName, "echo 'initial content'", "Enter").Run()
+	sendKeysToSession(t.Context(), SendKeysOptions{
+		SessionName: sessionName,
+		Keys:        "echo 'initial content'",
+		Enter:       true,
+	})
 
 	// Wait a moment for command to complete
 	time.Sleep(300 * time.Millisecond)
 
 	// Get initial hash
-	captureCmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p")
-	initialOutput, err := captureCmd.Output()
+	captureResult, err := capture(t.Context(), captureOptions{Prefix: sessionName})
 	if err != nil {
 		t.Fatalf("Failed to get initial capture: %v", err)
 	}
-	initialHash := calculateHash(string(initialOutput))
+	initialHash := captureResult.Hash
 
 	// Send new content to change the session
 	go func() {
 		time.Sleep(200 * time.Millisecond)
-		exec.Command("tmux", "send-keys", "-t", sessionName, "echo 'changed content'", "Enter").Run()
+		sendKeysToSession(t.Context(), SendKeysOptions{
+			SessionName: sessionName,
+			Keys:        "echo 'changed content'",
+			Enter:       true,
+		})
 	}()
 
 	tool := &CaptureTool{
@@ -107,25 +114,27 @@ func TestCaptureTool_Handle_WaitForChange_ContentChanges(t *testing.T) {
 
 func TestCaptureTool_Handle_WaitForChange_Timeout(t *testing.T) {
 	// Create a test session that won't change
-	sessionName := "test-capture-timeout"
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", sessionName)
-	if err := cmd.Run(); err != nil {
-		t.Skipf("Skipping test: could not create tmux session: %v", err)
+	sessionName, err := createUniqueSession(t.Context(), "test-capture-timeout", []string{"bash"})
+	if err != nil {
+		t.Fatalf("Could not create tmux session: %v", err)
 	}
 
 	// Send static content
-	exec.Command("tmux", "send-keys", "-t", sessionName, "echo 'static content'", "Enter").Run()
+	sendKeysToSession(t.Context(), SendKeysOptions{
+		SessionName: sessionName,
+		Keys:        "echo 'static content'",
+		Enter:       true,
+	})
 
 	// Wait a moment for command to complete
 	time.Sleep(300 * time.Millisecond)
 
 	// Get initial hash
-	captureCmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p")
-	initialOutput, err := captureCmd.Output()
+	captureResult, err := capture(t.Context(), captureOptions{Prefix: sessionName})
 	if err != nil {
 		t.Fatalf("Failed to get initial capture: %v", err)
 	}
-	initialHash := calculateHash(string(initialOutput))
+	initialHash := captureResult.Hash
 
 	tool := &CaptureTool{
 		SessionTool: SessionTool{
@@ -154,25 +163,27 @@ func TestCaptureTool_Handle_WaitForChange_Timeout(t *testing.T) {
 
 func TestCaptureTool_Handle_WaitForChange_DefaultTimeout(t *testing.T) {
 	// Create a test session
-	sessionName := "test-capture-default-timeout"
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", sessionName)
-	if err := cmd.Run(); err != nil {
-		t.Skipf("Skipping test: could not create tmux session: %v", err)
+	sessionName, err := createUniqueSession(t.Context(), "test-capture-default-timeout", []string{"bash"})
+	if err != nil {
+		t.Fatalf("Could not create tmux session: %v", err)
 	}
 
 	// Send some content
-	exec.Command("tmux", "send-keys", "-t", sessionName, "echo 'test'", "Enter").Run()
+	sendKeysToSession(t.Context(), SendKeysOptions{
+		SessionName: sessionName,
+		Keys:        "echo 'test'",
+		Enter:       true,
+	})
 
 	// Wait a moment for command to complete
 	time.Sleep(300 * time.Millisecond)
 
 	// Get the actual current hash first
-	captureCmd := exec.Command("tmux", "capture-pane", "-t", sessionName, "-p")
-	currentOutput, err := captureCmd.Output()
+	captureResult, err := capture(t.Context(), captureOptions{Prefix: sessionName})
 	if err != nil {
 		t.Fatalf("Failed to get current capture: %v", err)
 	}
-	currentHash := calculateHash(string(currentOutput))
+	currentHash := captureResult.Hash
 
 	tool := &CaptureTool{
 		SessionTool: SessionTool{

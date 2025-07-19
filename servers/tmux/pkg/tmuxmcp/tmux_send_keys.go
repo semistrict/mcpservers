@@ -18,7 +18,7 @@ type SendKeysTool struct {
 	Hash    string  `json:"hash" mcp:"required" description:"Content hash from previous capture (required for safety)"`
 	Keys    string  `json:"keys" mcp:"required" description:"Text to send to the session. Will be sent exactly as provided, preserving spaces and special characters."`
 	Enter   bool    `json:"enter" description:"Append Enter key after sending keys"`
-	Expect  string  `json:"expect" mcp:"required" description:"Wait for this string to appear on the cursor line (where user input goes)"`
+	Expect  string  `json:"contains" mcp:"required" description:"Wait for this string to appear on the cursor line (where user input goes)"`
 	MaxWait float64 `json:"max_wait" description:"Maximum seconds to wait for expected output"`
 }
 
@@ -28,12 +28,12 @@ func (t *SendKeysTool) Handle(ctx context.Context) (interface{}, error) {
 		return nil, fmt.Errorf("error sending keys: %v", err)
 	}
 
-	// If expect is provided, use the common function
+	// If contains is provided, use the common function
 	if t.Expect != "" {
 		return t.handleWithExpected(ctx, sessionName)
 	}
 
-	// Custom behavior for send_keys without expect
+	// Custom behavior for send_keys without contains
 	return t.handleWithoutExpect(ctx, sessionName)
 }
 

@@ -11,9 +11,8 @@ func TestCaptureWithCursor_Integration(t *testing.T) {
 	// Create a real tmux session for testing
 	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	if err != nil {
-		t.Skipf("Could not create tmux session for testing: %v", err)
+		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
-	defer func() { killSession(t.Context(), sessionName) }()
 
 	// Test capturing with cursor position
 	result, err := captureWithCursor(t.Context(), captureOptions{Prefix: sessionName})
@@ -50,17 +49,16 @@ func TestWaitForExpected_CursorLineOnly_Integration(t *testing.T) {
 	// Create a real tmux session for testing
 	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	if err != nil {
-		t.Skipf("Could not create tmux session for testing: %v", err)
+		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
-	defer func() { killSession(t.Context(), sessionName) }()
 
 	// Send a command that will provide a recognizable prompt
 	sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
-		Hash:        "any", // We'll bypass hash check by using empty expect
+		Hash:        "any", // We'll bypass hash check by using empty contains
 		Keys:        "echo 'test-marker'",
 		Enter:       true,
-		Expect:      "", // Empty expect to skip waiting
+		Expect:      "", // Empty contains to skip waiting
 		Literal:     true,
 	})
 

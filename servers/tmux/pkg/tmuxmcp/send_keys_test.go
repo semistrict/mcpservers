@@ -12,7 +12,6 @@ func TestSendKeysToolLiteralMode_Integration(t *testing.T) {
 	// Create a real tmux session for testing
 	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	assert.NoError(t, err)
-	defer func() { killSession(t.Context(), sessionName) }()
 
 	// Get initial hash
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(1*time.Second))
@@ -27,7 +26,7 @@ func TestSendKeysToolLiteralMode_Integration(t *testing.T) {
 	tool := &SendKeysTool{
 		Hash:   initialHash,
 		Keys:   "hello world with spaces",
-		Expect: "", // Empty expect for testing
+		Expect: "", // Empty contains for testing
 	}
 	tool.Prefix = sessionName
 
@@ -84,7 +83,7 @@ func TestSendKeysCommonValidation(t *testing.T) {
 			errMsg:    "keys parameter is required",
 		},
 		{
-			name: "valid literal keys with empty expect",
+			name: "valid literal keys with empty contains",
 			opts: SendKeysOptions{
 				SessionName: "test-session",
 				Hash:        "test-hash",
@@ -95,7 +94,7 @@ func TestSendKeysCommonValidation(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name: "valid control keys with expect",
+			name: "valid control keys with contains",
 			opts: SendKeysOptions{
 				SessionName: "test-session",
 				Hash:        "test-hash",
@@ -126,11 +125,10 @@ func TestSendKeysCommonValidation(t *testing.T) {
 
 func TestSendKeysToolHandle_Integration(t *testing.T) {
 	// Create a real tmux session for testing
-	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
+	sessionName, err := createUniqueSession(t.Context(), "TestSendKeysToolHandle_Integration", []string{"bash"})
 	if err != nil {
-		t.Skipf("Could not create tmux session for testing: %v", err)
+		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
-	defer func() { killSession(t.Context(), sessionName) }()
 
 	// Get initial hash
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(time.Second))
@@ -144,7 +142,7 @@ func TestSendKeysToolHandle_Integration(t *testing.T) {
 	tool := &SendKeysTool{
 		Hash:   initialHash,
 		Keys:   "hello world",
-		Expect: "", // Empty expect for testing
+		Expect: "", // Empty contains for testing
 	}
 	tool.Prefix = sessionName
 
@@ -167,9 +165,8 @@ func TestSendControlKeysToolHandle_Integration(t *testing.T) {
 	// Create a real tmux session for testing
 	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	if err != nil {
-		t.Skipf("Could not create tmux session for testing: %v", err)
+		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
-	defer func() { killSession(t.Context(), sessionName) }()
 
 	// Get initial hash
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(time.Second))
@@ -184,7 +181,7 @@ func TestSendControlKeysToolHandle_Integration(t *testing.T) {
 		Hash:   initialHash,
 		Keys:   "C-c Enter",
 		Hex:    false,
-		Expect: "", // Empty expect for testing
+		Expect: "", // Empty contains for testing
 	}
 	tool.Prefix = sessionName
 
@@ -240,9 +237,8 @@ func TestEmptyExpectBehavior_Integration(t *testing.T) {
 	// Create a real tmux session for testing
 	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	if err != nil {
-		t.Skipf("Could not create tmux session for testing: %v", err)
+		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
-	defer func() { killSession(t.Context(), sessionName) }()
 
 	// Wait for session to stabilize before getting hash
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(2*time.Second))
@@ -253,26 +249,26 @@ func TestEmptyExpectBehavior_Integration(t *testing.T) {
 	}
 	initialHash := result.Hash
 
-	// Test empty expect - should send keys without waiting
+	// Test empty contains - should send keys without waiting
 	emptyExpectResult, err := sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
 		Hash:        initialHash,
 		Keys:        "echo test",
-		Expect:      "", // Empty expect
+		Expect:      "", // Empty contains
 		Enter:       false,
 		Literal:     true, // Need to set this when calling sendKeysCommon directly
 	})
 
 	if err != nil {
-		t.Fatalf("Expected no error for empty expect, got: %v", err)
+		t.Fatalf("Expected no error for empty contains, got: %v", err)
 	}
 
 	if emptyExpectResult.Output != "" {
-		t.Errorf("Expected empty output for empty expect, got: %s", emptyExpectResult.Output)
+		t.Errorf("Expected empty output for empty contains, got: %s", emptyExpectResult.Output)
 	}
 
 	if emptyExpectResult.Hash != "" {
-		t.Errorf("Expected empty hash for empty expect, got: %s", emptyExpectResult.Hash)
+		t.Errorf("Expected empty hash for empty contains, got: %s", emptyExpectResult.Hash)
 	}
 
 	// Verify keys were actually sent by capturing current state
@@ -330,6 +326,8 @@ func TestEnterFlagHandling_Integration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel() // Run subtests in parallel
+			
 			var err error
 			tt.opts.SessionName, err = createUniqueSession(t.Context(), "test", []string{"bash"})
 			assert.NoError(t, err)
@@ -347,12 +345,12 @@ func TestEnterFlagHandling_Integration(t *testing.T) {
 			assert.NoError(t, err)
 			assert.NotNil(t, result)
 
-			// For empty expect, should get empty output
+			// For empty contains, should get empty output
 			if result.Output != "" {
-				t.Errorf("Expected empty output for empty expect, got: %s", result.Output)
+				t.Errorf("Expected empty output for empty contains, got: %s", result.Output)
 			}
 			if result.Hash != "" {
-				t.Errorf("Expected empty hash for empty expect, got: %s", result.Hash)
+				t.Errorf("Expected empty hash for empty contains, got: %s", result.Hash)
 			}
 
 			// Verify keys were sent by capturing session

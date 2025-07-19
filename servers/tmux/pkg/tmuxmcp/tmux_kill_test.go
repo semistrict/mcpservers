@@ -32,16 +32,16 @@ func TestKillTool_Handle_CorrectHash(t *testing.T) {
 	// Create a test session using proper infrastructure
 	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	if err != nil {
-		t.Skipf("Could not create tmux session for testing: %v", err)
+		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
 
 	// Send content to the session using the test infrastructure
 	sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
-		Hash:        "any", // Skip hash verification with empty expect
+		Hash:        "any", // Skip hash verification with empty contains
 		Keys:        "echo 'test content'",
 		Enter:       true,
-		Expect:      "", // Empty expect to skip waiting
+		Expect:      "", // Empty contains to skip waiting
 		Literal:     true,
 	})
 
@@ -92,7 +92,6 @@ func TestKillTool_Handle_IncorrectHash(t *testing.T) {
 	// Create a test session using proper infrastructure
 	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
 	assert.NoError(t, err)
-	defer func() { killSession(t.Context(), sessionName) }() // Cleanup in case test fails
 
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(time.Second))
 	defer cancel()
@@ -102,20 +101,20 @@ func TestKillTool_Handle_IncorrectHash(t *testing.T) {
 	// Send initial content using test infrastructure
 	sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
-		Hash:        rc.Hash, // Skip hash verification with empty expect
+		Hash:        rc.Hash, // Skip hash verification with empty contains
 		Keys:        "echo 'initial content'",
 		Enter:       true,
-		Expect:      "", // Empty expect to skip waiting
+		Expect:      "", // Empty contains to skip waiting
 		Literal:     true,
 	})
 
 	// Change the session content
 	sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
-		Hash:        "any", // Skip hash verification with empty expect
+		Hash:        "any", // Skip hash verification with empty contains
 		Keys:        "echo 'changed content'",
 		Enter:       true,
-		Expect:      "", // Empty expect to skip waiting
+		Expect:      "", // Empty contains to skip waiting
 		Literal:     true,
 	})
 
@@ -167,16 +166,16 @@ func TestKillTool_Handle_PrefixResolution(t *testing.T) {
 	// Create a test session using proper infrastructure
 	sessionName, err := createUniqueSession(t.Context(), "test-kill-prefix", []string{"bash"})
 	if err != nil {
-		t.Skipf("Could not create tmux session for testing: %v", err)
+		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
 
 	// Send content to the session using test infrastructure
 	sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
-		Hash:        "any", // Skip hash verification with empty expect
+		Hash:        "any", // Skip hash verification with empty contains
 		Keys:        "echo 'test'",
 		Enter:       true,
-		Expect:      "", // Empty expect to skip waiting
+		Expect:      "", // Empty contains to skip waiting
 		Literal:     true,
 	})
 

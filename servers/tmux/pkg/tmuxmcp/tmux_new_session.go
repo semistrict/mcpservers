@@ -15,7 +15,7 @@ type NewSessionTool struct {
 	_ mcpcommon.ToolInfo `name:"tmux_new_session" title:"Create Tmux Session" description:"Create a new tmux session with optional command execution" destructive:"true"`
 	SessionTool
 	Command        []string `json:"command" description:"Command and arguments to run in the session"`
-	Expect         string   `json:"expect" description:"Wait for this string to appear in output before returning"`
+	Expect         string   `json:"contains" description:"Wait for this string to appear in output before returning"`
 	KillOthers     bool     `json:"kill_others" description:"Kill existing sessions with same prefix before creating new one"`
 	AllowMultiple  bool     `json:"allow_multiple" description:"Allow multiple sessions with same prefix"`
 	MaxWait        float64  `json:"max_wait" description:"Maximum seconds to wait for output"`

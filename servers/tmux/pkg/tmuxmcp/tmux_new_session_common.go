@@ -3,16 +3,16 @@ package tmuxmcp
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
-	"strings"
+	"time"
 )
 
 // createUniqueSession creates a new tmux session with a unique name
-// It will try incrementing numbers until it finds an available session name
+// It will try random numbers until it finds an available session name
 func createUniqueSession(ctx context.Context, prefix string, command []string) (string, error) {
 	if prefix == "" {
 		prefix = detectPrefix()
@@ -34,43 +34,20 @@ func createUniqueSession(ctx context.Context, prefix string, command []string) (
 		cmdPart = "session"
 	}
 
-	// Get existing sessions with this prefix
-	existingSessions, err := list(ctx, "")
-	if err != nil {
-		// If we can't list sessions, assume none exist
-		existingSessions = []string{}
-	}
-
-	// Find the highest number used for this prefix-cmdPart combination
+	// Base name for the session
 	baseName := fmt.Sprintf("%s-%s", prefix, cmdPart)
-	maxNumber := 0
 
-	for _, session := range existingSessions {
-		if strings.HasPrefix(session, baseName+"-") {
-			// Extract number from session name like "prefix-cmdPart-123"
-			parts := strings.Split(session, "-")
-			if len(parts) >= 3 {
-				if num, err := strconv.Atoi(parts[len(parts)-1]); err == nil {
-					if num > maxNumber {
-						maxNumber = num
-					}
-				}
-			}
-		}
-	}
+	// Initialize random number generator
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	// Try creating sessions with incrementing numbers
-	for i := maxNumber + 1; i < maxNumber+100; i++ { // Try up to 100 attempts
-		sessionName := fmt.Sprintf("%s-%d", baseName, i)
+	// Try creating sessions with random numbers
+	for i := 0; i < 100; i++ { // Try up to 100 attempts
+		// Generate a random number between 1000 and 9999
+		randomNum := rng.Intn(9000) + 1000
+		sessionName := fmt.Sprintf("%s-%d", baseName, randomNum)
 
 		// Try to create the session
-		var err error
-		if len(command) > 0 {
-			args := append([]string{"new-session", "-d", "-s", sessionName}, command...)
-			_, err = runTmuxCommand(ctx, args...)
-		} else {
-			_, err = runTmuxCommand(ctx, "new-session", "-d", "-s", sessionName)
-		}
+		err := newSession(ctx, sessionName, command)
 
 		if err == nil {
 			// Success! Return the session name

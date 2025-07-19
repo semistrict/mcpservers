@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(go get:*)",
+      "Bash(go build:*)",
+      "Bash(go mod:*)",
+      "WebFetch(domain:pkg.go.dev)",
+      "WebFetch(domain:github.com)",
+      "Bash(cp:*)",
+      "Bash(rm:*)",
+      "Bash(tmux:*)",
+      "Bash(go test:*)",
+      "mcp__tmux-mcp__tmux_capture",
+      "Bash(sed:*)",
+      "Bash(grep:*)",
+      "Bash(make:*)",
+      "Bash(find:*)"
+    ],
+    "deny": []
+  }
+}
