@@ -14,7 +14,7 @@ Advanced tmux session management with safety features:
 - **Read-only by default**: Safe attachment mode prevents accidental modifications
 - **Output formatting**: Line numbers and empty line compression for better readability
 
-**Tools**: `tmux_new_session`, `tmux_capture`, `tmux_send_keys`, `tmux_list`, `tmux_kill`, `tmux_attach`, `tmux_bash`
+**Tools**: `tmux_new_session`, `tmux_capture`, `tmux_send_keys`, `tmux_send_control_keys`, `tmux_list`, `tmux_kill`, `tmux_attach`, `tmux_bash`
 
 See [servers/tmux/README.md](servers/tmux/README.md) for detailed documentation.
 
@@ -26,24 +26,25 @@ This project includes a comprehensive Makefile for building and testing:
 ### Quick Start
 ```bash
 make                    # Build and test everything
-make build              # Build all binaries
-make test               # Run all tests
-make help               # Show all available targets
+make build              # Build all binaries to bin/ directory
+make test               # Run all tests with verbose output
+make clean              # Remove build artifacts
 ```
 
 ### Development Workflow
 ```bash
-make dev                # Clean, format, vet, build, and test
-make check              # Format, vet, build, and test
-make test-tmux          # Run only tmux tests
+make precommit          # Clean, format, vet, staticcheck, build, and test
+make fmt                # Format code with go fmt
+make vet                # Run go vet for basic issues
+make staticcheck        # Run static analysis
 ```
 
 ### CI/CD
 ```bash
-make ci                 # CI workflow (fmt-check, vet, build, test)
+make ci                 # CI workflow (build, test, lint, fmt-check, vet, staticcheck)
 make fmt-check          # Verify code is properly formatted
-make test-coverage      # Generate coverage report
-make lint               # Run linter (requires golangci-lint)
+make test-coverage      # Generate HTML coverage report in out/
+make lint               # Run golangci-lint (if installed)
 ```
 
 ### Installation
@@ -67,43 +68,21 @@ go build -o mcptest ./cmd/mcptest
 go build -o mcpwrapper ./cmd/mcpwrapper
 ```
 
-## Installing with Claude
-
-```bash
-# Install tmux server directly
-claude tmuxmcp add -s user tmux-tmuxmcp "$(pwd)/tmux-mcp"
-
-# OR install with hot-reload wrapper for development
-claude tmuxmcp add -s user tmux-tmuxmcp "$(pwd)/mcpwrapper $(pwd)/tmux-mcp"
-```
-
 ## Testing with mcptest
 
 The repository includes a powerful testing utility for MCP servers:
 
 ```bash
+# Build the tools first
+make build
+
 # Interactive testing
-./mcptest ./tmux-tmuxmcp
+./bin/mcptest ./bin/tmux-mcp
 
 # Run test file
-./mcptest ./tmux-tmuxmcp examples/tmux-basic.txt
+./bin/mcptest ./bin/tmux-mcp test.txt
 ```
 
-### Test File Format
-
-Create simple text files with tool calls:
-
-```
-# Comments start with #
-tool_name arg1=value1 arg2=value2
-
-# Examples:
-tmux_list
-tmux_new_session command=[echo,hello] prefix=test
-tmux_capture prefix=test
-```
-
-See `examples/` directory for more test files.
 
 ## Development with Hot-Reload
 
@@ -111,10 +90,10 @@ The `mcpwrapper` utility provides hot-reload functionality during development:
 
 ```bash
 # Start wrapper that monitors for binary changes
-./mcpwrapper ./tmux-tmuxmcp
+./bin/mcpwrapper ./bin/tmux-mcp
 
 # In another terminal, recompile the server
-go build -o tmux-tmuxmcp ./servers/tmux/cmd/tmux-tmuxmcp
+make build
 
 # The wrapper automatically:
 # 1. Detects the binary change
@@ -126,22 +105,6 @@ go build -o tmux-tmuxmcp ./servers/tmux/cmd/tmux-tmuxmcp
 
 This allows seamless development where you can modify server code, recompile, and immediately see changes in connected MCP clients without manual restarts.
 
-## Repository Structure
-
-```
-cmd/
-├── mcptest/            # MCP server testing utility
-└── mcpwrapper/         # Hot-reload wrapper for development
-servers/
-├── tmux/               # Tmux session management server
-│   ├── cmd/tmux-mcp/   # Main entry point
-│   ├── pkg/mcp/        # MCP server implementation
-│   ├── pkg/tmux/       # Tmux client library
-│   └── README.md       # Tmux-specific documentation
-examples/               # Test files for mcptest
-├── tmux-basic.txt      # Basic tmux operations
-└── tmux-interactive.txt # Interactive session example
-```
 
 ## Contributing
 

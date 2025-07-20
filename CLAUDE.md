@@ -5,14 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build Commands
 
 - `make build` - Build all binaries to `bin/` directory (required after code changes)
-- `make dev` - Full development workflow: clean, format, vet, build, and test
-- `make check` - Quick check: format, vet, staticcheck, build, and test
+- `make precommit` - Pre-commit checks: clean, format, vet, staticcheck, build, and test
 - `make clean` - Remove build artifacts
 
 ## Test Commands
 
 - `make test` - Run all tests with verbose output
-- `make test-tmux` - Run only tmux server tests
 - `make test-coverage` - Generate HTML coverage report
 - Run a single test: `go test -v -run TestName ./servers/tmux/pkg/tmuxmcp`
 - Run tests in a specific package: `go test -v ./servers/tmux/pkg/tmuxmcp`
@@ -23,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `make vet` - Run go vet for basic issues
 - `make staticcheck` - Run static analysis
 - `make lint` - Run golangci-lint (if installed)
-- `make ci` - Run CI workflow (fmt-check, vet, staticcheck, build, test-tmux-short)
+- `make ci` - Run CI workflow (build, test, lint, fmt-check, vet, staticcheck)
 
 ## Architecture Overview
 
@@ -44,7 +42,6 @@ This is a collection of Model Context Protocol (MCP) servers in Go with two main
 - Standard Go testing with `testing.T`
 - Integration tests for tmux operations with real tmux sessions
 - Test utilities in `mcptest` for manual testing
-- Example test files in `examples/` directory
 
 ## Development Guidelines
 
