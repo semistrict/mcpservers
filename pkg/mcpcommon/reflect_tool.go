@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 func ReflectTool[T ToolHandler](constructor func() T) server.ServerTool {
@@ -48,33 +49,36 @@ func ReflectTool[T ToolHandler](constructor func() T) server.ServerTool {
 	return server.ServerTool{
 		Tool: tool,
 		Handler: func(ctx context.Context, request mcp.CallToolRequest) (result *mcp.CallToolResult, err error) {
-			defer func() {
-				if r := recover(); r != nil {
-					err = fmt.Errorf("tool panic: %s", r)
-				}
-			}()
-
 			var toolInstance = constructor()
-
-			if err := unmarshalArguments(toolInstance, request.GetArguments()); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal arguments: %v", err)
-			}
-
-			ctx = withCallToolRequest(ctx, &request)
-
-			var rawResult any
-			slog.DebugContext(ctx, "calling tool", "tool", toolName)
-			rawResult, err = toolInstance.Handle(ctx)
-			if err != nil {
-
-				slog.WarnContext(ctx, "tool returned error", "err", err)
-				return convertResult(toolName, err), nil
-			}
-
-			// Convert result to CallToolResult
-			return convertResult(toolName, rawResult), nil
+			return InvokeReflectTool(ctx, toolName, toolInstance, request)
 		},
 	}
+}
+
+func InvokeReflectTool(ctx context.Context, toolName string, toolInstance ToolHandler, request mcp.CallToolRequest) (result *mcp.CallToolResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("tool panic: %s", r)
+		}
+	}()
+
+	if err := unmarshalArguments(toolInstance, request.GetArguments()); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal arguments: %v", err)
+	}
+
+	ctx = withCallToolRequest(ctx, &request)
+
+	var rawResult any
+	slog.DebugContext(ctx, "calling tool", "tool", toolName)
+	rawResult, err = toolInstance.Handle(ctx)
+	if err != nil {
+
+		slog.WarnContext(ctx, "tool returned error", "err", err)
+		return convertResult(toolName, err), nil
+	}
+
+	// Convert result to CallToolResult
+	return convertResult(toolName, rawResult), nil
 }
 
 func parseToolInfo(toolType reflect.Type) (name, title, description string, destructive, readonly bool) {
@@ -96,6 +100,17 @@ func parseToolInfo(toolType reflect.Type) (name, title, description string, dest
 	return
 }
 
+var registeredStructSchemas sync.Map
+
+func RegisterStructSchema(structName string, schemaJSON string) {
+	schema := map[string]any{}
+	err := json.Unmarshal([]byte(schemaJSON), &schema)
+	if err != nil {
+		log.Panicf("invalid json: %v", err)
+	}
+	registeredStructSchemas.Store(structName, schema)
+}
+
 func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 	var options []mcp.ToolOption
 
@@ -109,7 +124,6 @@ func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 
 		// Skip embedded structs - we'll handle their fields recursively
 		if field.Anonymous {
-
 			options = append(options, parseToolProperties(field.Type)...)
 			continue
 		}
@@ -147,6 +161,21 @@ func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 
 		// Add property based on field type
 		switch field.Type.Kind() {
+		case reflect.Pointer:
+			element := field.Type.Elem()
+			// TODO: actually implement this with reflection, for now we just allow hard-coded schemas
+			val, ok := registeredStructSchemas.Load(element.Name())
+			if !ok {
+				log.Panicf("struct schema not registered: %s", field.Type.Name())
+			}
+			schema := val.(map[string]any)
+			paramOptions = append(paramOptions, func(s map[string]any) {
+				for k, v := range schema {
+					s[k] = v
+				}
+			})
+			options = append(options, mcp.WithObject(fieldName, paramOptions...))
+			continue
 		case reflect.String:
 			if defaultValue != "" {
 				paramOptions = append(paramOptions, mcp.DefaultString(defaultValue))

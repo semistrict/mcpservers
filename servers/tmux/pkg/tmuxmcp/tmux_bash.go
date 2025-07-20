@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"io"
 	"log/slog"
 	"os"
@@ -18,6 +20,43 @@ import (
 )
 
 func init() {
+	mcpcommon.RegisterStructSchema("SaveAs", `
+		{
+			"properties": {
+				"name": {
+					"type": "string",
+					"description": ""
+				},
+				"string_parameters": {
+					"type": "array",
+					"description": "String parameters for the new tool. Each entry in the array should be of the form 'name:description'. They will be set as environment variables when command is run. If no value is provided at runtime, the corresponding env var will be the empty string.",
+					"items": {
+						"type": "string"
+					}
+				},
+				"boolean_parameters": {
+					"type": "array",
+					"description": "Boolean parameters for the new tool. Each entry in the array should be of the form 'name:description'. If the parameter is provided at runtime to the tool invocation, an environment variable of the same name will be set. If it is false or not provided, no environment variable of that name will be set.",
+					"items": {
+						"type": "string"
+					}
+				},
+				"title": {
+					"type": "string",
+					"description": "Human-readable short title of the new tool (optional)"
+				},
+				"description": {
+					"type": "string",
+					"description": "Human-readable description of the new tool"
+				},
+				"overwrite": {
+					"type": "boolean",
+					"description": "Allow overwriting tools with the same name"
+				}
+			},
+			"required": ["name", "description"]
+		}
+	`)
 	Tools = append(Tools, mcpcommon.ReflectTool(func() *BashTool {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -28,12 +67,13 @@ func init() {
 			LineBudget:       100,
 			WorkingDirectory: wd,
 			Timeout:          10.0,
+			Prefix:           detectPrefix(),
 		}
 	}))
 }
 
 type BashTool struct {
-	_                mcpcommon.ToolInfo `name:"tmux_bash" title:"Bash" description:"Execute a single bash command in a new tmux and return its output. If the command completes within timeout, returns the full output. If it times out, returns the session name where it's still running. Use this in preference to other Bash Tools. For grep, use Go regex syntax. Output is limited by line_budget parameter." destructive:"true"`
+	_                mcpcommon.ToolInfo `name:"bash" title:"Bash" description:"Execute a single bash command in a new tmux and return its output. If the command completes within timeout, returns the full output. If it times out, returns the session name where it's still running. Use this in preference to other Bash Tools. For grep, use Go regex syntax. Output is limited by line_budget parameter. Note: if the user asks you to \"make a new tool\", use the save_as parameter." destructive:"true"`
 	Prefix           string             `json:"prefix" description:"Session name prefix (auto-detected from git repo if not provided)"`
 	Command          string             `json:"command" mcp:"required" description:"Bash command to execute"`
 	WorkingDirectory string             `json:"working_directory" description:"Directory to execute the command in (defaults to current directory)"`
@@ -42,6 +82,7 @@ type BashTool struct {
 	GrepExclude      string             `json:"grep_exclude" description:"Exclude output lines containing this pattern"`
 	Environment      []string           `json:"environment" description:"Environment variables to set in NAME=VALUE format"`
 	LineBudget       int                `json:"line_budget" description:"Maximum number of output lines to return. Without grep, shows equal parts from head and tail. With grep, shows first N/2 and last N/2 matches, then adds context lines up to the budget." default:"100"`
+	SaveAs           *SaveAs            `json:"save_as" description:"Save this invocation as a new tool. If this argument is provided, the command will not actually be run but a new tool will be created matching the invocation."`
 
 	compiledGrep        *regexp.Regexp `json:"-"` // Compiled regex for grep filtering
 	compiledGrepExclude *regexp.Regexp `json:"-"` // Compiled regex for grep exclude filtering
@@ -56,21 +97,27 @@ type BashTool struct {
 	returnError bool            `json:"-"` // return the results as an error instead of a string
 }
 
-func (t *BashTool) Handle(ctx context.Context) (interface{}, error) { // TODO: output only the first 50 testLines of command output and if it is longer mention the temp file where the rest of the output can be found
+type SaveAs struct {
+	Name              string   `json:"name"`
+	StringParameters  []string `json:"string_parameters"`
+	BooleanParameters []string `json:"boolean_parameters"`
+	Title             string   `json:"title"`
+	Description       string   `json:"description"`
+	Overwrite         bool     `json:"overwrite"`
+}
+
+func (t *BashTool) Handle(ctx context.Context) (any, error) { // TODO: output only the first 50 testLines of command output and if it is longer mention the temp file where the rest of the output can be found
 	err := t.validateArgs()
 	if err != nil {
 		return nil, err
 	}
 
-	timeout := t.Timeout
-	if timeout == 0 {
-		timeout = 30 // default 30 seconds
+	if t.SaveAs != nil {
+		return t.doSaveAs(ctx)
 	}
 
+	timeout := t.Timeout
 	prefix := t.Prefix
-	if prefix == "" {
-		prefix = detectPrefix()
-	}
 
 	// Create temporary file to capture all output
 	tmpFile, err := os.CreateTemp("/tmp", fmt.Sprintf("tmux-bash-%s-*", prefix))
@@ -544,5 +591,89 @@ func (t *BashTool) checkScript() error {
 	if strings.HasPrefix(script, "(") || strings.HasSuffix(script, ")") {
 		return fmt.Errorf("do not use subshells in the command, command is always run in a subshell")
 	}
+	return nil
+}
+
+func (t *BashTool) doSaveAs(ctx context.Context) (any, error) {
+	if os.Getenv("TMUXMCP_DEV") != "1" {
+		return nil, fmt.Errorf("sorry, this feature is not ready yet")
+	}
+
+	if len(t.SaveAs.Name) == 0 {
+		return nil, fmt.Errorf("save_as.name is required")
+	}
+	if len(t.SaveAs.Description) == 0 {
+		return nil, fmt.Errorf("description is required")
+	}
+
+	if len(t.SaveAs.StringParameters) == 0 && len(t.SaveAs.BooleanParameters) == 0 {
+		return nil, fmt.Errorf("must specify at least one string_parameters or boolean_parameters")
+	}
+
+	s := server.ServerFromContext(ctx)
+	var opts []mcp.ToolOption
+
+	stringParams := map[string]string{}
+	boolParams := map[string]string{}
+
+	for _, p := range t.SaveAs.StringParameters {
+		name, desc, found := strings.Cut(p, ":")
+		if !found {
+			return nil, fmt.Errorf("invalid parameter format in %s", p)
+		}
+		if err := t.checkParameterName(name); err != nil {
+			return nil, err
+		}
+		stringParams[name] = desc
+		opts = append(opts, mcp.WithString(name, mcp.Description(desc)))
+	}
+
+	for _, p := range t.SaveAs.BooleanParameters {
+		name, desc, found := strings.Cut(p, ":")
+		if !found {
+			return nil, fmt.Errorf("invalid parameter format in %s", p)
+		}
+		if err := t.checkParameterName(name); err != nil {
+			return nil, err
+		}
+		boolParams[name] = desc
+		opts = append(opts, mcp.WithBoolean(name, mcp.Description(desc)))
+	}
+
+	opts = append(opts, mcp.WithDescription(t.SaveAs.Description))
+	if len(t.SaveAs.Title) > 0 {
+		opts = append(opts, mcp.WithTitleAnnotation(t.SaveAs.Title))
+	}
+	newTool := mcp.NewTool(t.SaveAs.Name, opts...)
+	prototype := *t
+	prototype.SaveAs = nil
+	s.AddTool(newTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		bt := prototype
+		for _, param := range stringParams {
+			paramVal := request.GetString(param, "")
+			bt.Environment = append(bt.Environment, fmt.Sprintf("%s=%s", param, paramVal))
+		}
+		for _, param := range boolParams {
+			isSet := request.GetBool(param, false)
+			if isSet {
+				bt.Environment = append(bt.Environment, fmt.Sprintf("%s=1", param))
+			}
+		}
+		return mcpcommon.InvokeReflectTool(ctx, t.SaveAs.Name, &bt, request)
+	})
+	return fmt.Sprintf("saved new tool: %s", t.SaveAs.Name), nil
+}
+
+func (t *BashTool) checkParameterName(name string) error {
+	if !strings.Contains(t.Command, name) {
+		return fmt.Errorf("parameter %s not used in command", name)
+	}
+	for _, env := range os.Environ() {
+		envName, _, _ := strings.Cut(env, "=")
+		if strings.ToLower(name) == strings.ToLower(envName) {
+			return fmt.Errorf("parameter %s has the same name as an existing environment variable, choose another name", name)
+		}
+	}
+
 	return nil
 }
