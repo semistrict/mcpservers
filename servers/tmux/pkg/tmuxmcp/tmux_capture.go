@@ -8,7 +8,11 @@ import (
 )
 
 func init() {
-	Tools = append(Tools, mcpcommon.ReflectTool[*CaptureTool]())
+	Tools = append(Tools, mcpcommon.ReflectTool(func() *CaptureTool {
+		return &CaptureTool{
+			Timeout: 10.0,
+		}
+	}))
 }
 
 type CaptureTool struct {

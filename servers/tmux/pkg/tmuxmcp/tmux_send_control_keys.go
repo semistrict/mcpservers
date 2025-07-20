@@ -7,7 +7,11 @@ import (
 )
 
 func init() {
-	Tools = append(Tools, mcpcommon.ReflectTool[*SendControlKeysTool]())
+	Tools = append(Tools, mcpcommon.ReflectTool(func() *SendControlKeysTool {
+		return &SendControlKeysTool{
+			MaxWait: 20.0,
+		}
+	}))
 }
 
 type SendControlKeysTool struct {

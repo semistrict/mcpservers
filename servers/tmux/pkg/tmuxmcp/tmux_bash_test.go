@@ -221,7 +221,7 @@ func TestBashTool_Handle_Environment_SpecialChars(t *testing.T) {
 		Timeout: 2,
 	})
 
-	assert.Contains(t, result, "[1]: VAR=special$chars\"with'quotes")
+	assert.Contains(t, result, `[1]: VAR=special$chars\"with'quotes`)
 }
 
 func TestBashTool_Handle_Environment_Empty(t *testing.T) {

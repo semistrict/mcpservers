@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"log"
+	"log/slog"
 	"reflect"
 	"strconv"
 	"strings"
 )
 
-func ReflectTool[T ToolHandler]() server.ServerTool {
-	var example T
+func ReflectTool[T ToolHandler](constructor func() T) server.ServerTool {
+	example := constructor()
 	toolType := reflect.TypeOf(example)
 
 	// If T is a pointer type, get the element type
@@ -22,6 +24,9 @@ func ReflectTool[T ToolHandler]() server.ServerTool {
 
 	// Get tool metadata from ToolInfo field
 	toolName, toolTitle, toolDescription, isDestructive, isReadOnly := parseToolInfo(toolType)
+	if len(toolName) == 0 {
+		toolName = toolType.Name()
+	}
 
 	// Create the tool with basic info
 	options := []mcp.ToolOption{
@@ -43,40 +48,31 @@ func ReflectTool[T ToolHandler]() server.ServerTool {
 	return server.ServerTool{
 		Tool: tool,
 		Handler: func(ctx context.Context, request mcp.CallToolRequest) (result *mcp.CallToolResult, err error) {
-			// Create new instance and populate from request arguments
-			var toolInstance T
-
-			// Handle both pointer and value types
-			originalType := reflect.TypeOf(toolInstance)
-			if originalType.Kind() == reflect.Ptr {
-				// T is already a pointer type
-				toolInstance = reflect.New(originalType.Elem()).Interface().(T)
-			} else {
-				// T is a value type, create a pointer to it
-				ptr := reflect.New(originalType)
-				toolInstance = ptr.Interface().(T)
-			}
-
-			// Unmarshal arguments into the tool struct
-			if err := unmarshalArguments(toolInstance, request.GetArguments()); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal arguments: %v", err)
-			}
-
 			defer func() {
 				if r := recover(); r != nil {
 					err = fmt.Errorf("tool panic: %s", r)
 				}
 			}()
 
+			var toolInstance = constructor()
+
+			if err := unmarshalArguments(toolInstance, request.GetArguments()); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal arguments: %v", err)
+			}
+
+			ctx = withCallToolRequest(ctx, &request)
+
 			var rawResult any
-			// Call the handler
+			slog.DebugContext(ctx, "calling tool", "tool", toolName)
 			rawResult, err = toolInstance.Handle(ctx)
 			if err != nil {
-				return nil, err
+
+				slog.WarnContext(ctx, "tool returned error", "err", err)
+				return convertResult(toolName, err), nil
 			}
 
 			// Convert result to CallToolResult
-			return convertResult(rawResult), nil
+			return convertResult(toolName, rawResult), nil
 		},
 	}
 }
@@ -113,6 +109,7 @@ func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 
 		// Skip embedded structs - we'll handle their fields recursively
 		if field.Anonymous {
+
 			options = append(options, parseToolProperties(field.Type)...)
 			continue
 		}
@@ -127,28 +124,37 @@ func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 		required := field.Tag.Get("mcp") == "required"
 		defaultValue := field.Tag.Get("default")
 
+		var paramOptions []mcp.PropertyOption
+		paramOptions = append(paramOptions, mcp.Description(description))
+		if required {
+			paramOptions = append(paramOptions, mcp.Required())
+		}
+
 		// Validate that description doesn't contain "default:" - should use separate tag
 		if strings.Contains(strings.ToLower(description), "default:") {
 			panic(fmt.Sprintf("Field %s.%s: description contains 'default:' - use separate 'default' struct tag instead",
 				toolType.Name(), field.Name))
 		}
 
+		if field.Type == reflect.TypeOf(json.RawMessage{}) {
+			paramOptions = append(paramOptions, mcp.AdditionalProperties(true))
+			paramOptions = append(paramOptions, func(m map[string]any) {
+				delete(m, "properties")
+			})
+			options = append(options, mcp.WithObject(fieldName, paramOptions...))
+			continue
+		}
+
 		// Add property based on field type
 		switch field.Type.Kind() {
 		case reflect.String:
-			var paramOptions []mcp.PropertyOption
-			paramOptions = append(paramOptions, mcp.Description(description))
-			if required {
-				paramOptions = append(paramOptions, mcp.Required())
-			}
 			if defaultValue != "" {
 				paramOptions = append(paramOptions, mcp.DefaultString(defaultValue))
 			}
 			options = append(options, mcp.WithString(fieldName, paramOptions...))
+			continue
 
 		case reflect.Bool:
-			var paramOptions []mcp.PropertyOption
-			paramOptions = append(paramOptions, mcp.Description(description))
 			if defaultValue != "" {
 				if defaultValue == "true" {
 					paramOptions = append(paramOptions, mcp.DefaultBool(true))
@@ -157,28 +163,26 @@ func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 				}
 			}
 			options = append(options, mcp.WithBoolean(fieldName, paramOptions...))
+			continue
 
 		case reflect.Int, reflect.Int64, reflect.Float64:
-			var paramOptions []mcp.PropertyOption
-			paramOptions = append(paramOptions, mcp.Description(description))
-			if required {
-				paramOptions = append(paramOptions, mcp.Required())
-			}
 			if defaultValue != "" {
 				if defaultNum, err := strconv.ParseFloat(defaultValue, 64); err == nil {
 					paramOptions = append(paramOptions, mcp.DefaultNumber(defaultNum))
 				}
 			}
 			options = append(options, mcp.WithNumber(fieldName, paramOptions...))
+			continue
 		case reflect.Slice:
 			if field.Type.Elem().Kind() == reflect.String {
+				paramOptions = append(paramOptions, mcp.WithStringItems())
 				// Array of strings - specify items as string type
-				options = append(options, mcp.WithArray(fieldName,
-					mcp.Description(description),
-					mcp.WithStringItems(),
-				))
+				options = append(options, mcp.WithArray(fieldName, paramOptions...))
+				continue
 			}
 		}
+
+		log.Panicf("don't know how to represent parameter %v", field)
 	}
 
 	return options
@@ -194,8 +198,10 @@ func unmarshalArguments(tool interface{}, arguments map[string]interface{}) erro
 	return json.Unmarshal(jsonData, tool)
 }
 
-func convertResult(result interface{}) *mcp.CallToolResult {
+func convertResult(toolName string, result interface{}) *mcp.CallToolResult {
 	switch v := result.(type) {
+	case error:
+		return mcp.NewToolResultErrorFromErr(toolName, v)
 	case string:
 		return &mcp.CallToolResult{
 			Content: []mcp.Content{

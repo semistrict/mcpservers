@@ -8,7 +8,9 @@ import (
 )
 
 func init() {
-	Tools = append(Tools, mcpcommon.ReflectTool[*ListTool]())
+	Tools = append(Tools, mcpcommon.ReflectTool(func() *ListTool {
+		return &ListTool{}
+	}))
 }
 
 type ListTool struct {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"regexp"
 	"strconv"
@@ -17,7 +18,18 @@ import (
 )
 
 func init() {
-	Tools = append(Tools, mcpcommon.ReflectTool[*BashTool]())
+	Tools = append(Tools, mcpcommon.ReflectTool(func() *BashTool {
+		wd, err := os.Getwd()
+		if err != nil {
+			slog.Error("failed to get wd", "err", err)
+			wd = "/tmp"
+		}
+		return &BashTool{
+			LineBudget:       100,
+			WorkingDirectory: wd,
+			Timeout:          10.0,
+		}
+	}))
 }
 
 type BashTool struct {

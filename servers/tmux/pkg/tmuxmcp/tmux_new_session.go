@@ -8,7 +8,11 @@ import (
 )
 
 func init() {
-	Tools = append(Tools, mcpcommon.ReflectTool[*NewSessionTool]())
+	Tools = append(Tools, mcpcommon.ReflectTool(func() *NewSessionTool {
+		return &NewSessionTool{
+			OpenInTerminal: true,
+		}
+	}))
 }
 
 type NewSessionTool struct {

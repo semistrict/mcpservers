@@ -7,7 +7,9 @@ import (
 )
 
 func init() {
-	Tools = append(Tools, mcpcommon.ReflectTool[*KillTool]())
+	Tools = append(Tools, mcpcommon.ReflectTool(func() *KillTool {
+		return &KillTool{}
+	}))
 }
 
 type KillTool struct {

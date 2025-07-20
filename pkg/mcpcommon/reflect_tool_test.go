@@ -21,13 +21,17 @@ type TestToolWithTags struct {
 	NoDefault      string  `json:"no_default" description:"A parameter with no default"`
 }
 
+func newTestToolWithTags() *TestToolWithTags {
+	return &TestToolWithTags{}
+}
+
 func (t *TestToolWithTags) Handle(ctx context.Context) (interface{}, error) {
 	return "test result", nil
 }
 
 func TestReflectToolWithStructTags(t *testing.T) {
 	// Create the server tool using reflection
-	serverTool := ReflectTool[*TestToolWithTags]()
+	serverTool := ReflectTool(newTestToolWithTags)
 
 	// Verify the tool was created
 	if serverTool.Tool.Name != "test_tool" {
@@ -111,7 +115,9 @@ func TestReflectToolWithStructTags(t *testing.T) {
 
 func TestReflectToolHandlerExecution(t *testing.T) {
 	// Create the server tool using reflection
-	serverTool := ReflectTool[*TestToolWithTags]()
+	serverTool := ReflectTool(func() *TestToolWithTags {
+		return &TestToolWithTags{}
+	})
 
 	// Create a test request with required parameters
 	arguments := map[string]interface{}{
@@ -155,7 +161,7 @@ func TestReflectToolHandlerExecution(t *testing.T) {
 
 func TestReflectToolWithMissingRequiredParameter(t *testing.T) {
 	// Create the server tool using reflection
-	serverTool := ReflectTool[*TestToolWithTags]()
+	serverTool := ReflectTool(newTestToolWithTags)
 
 	// Create a test request missing required parameters
 	arguments := map[string]interface{}{
@@ -198,7 +204,9 @@ func (t *TestToolWithArray) Handle(ctx context.Context) (interface{}, error) {
 
 func TestReflectToolWithArrayParameter(t *testing.T) {
 	// Create the server tool using reflection
-	serverTool := ReflectTool[*TestToolWithArray]()
+	serverTool := ReflectTool(func() *TestToolWithArray {
+		return &TestToolWithArray{}
+	})
 
 	// Verify the tool was created
 	if serverTool.Tool.Name != "array_tool" {
@@ -253,5 +261,7 @@ func TestReflectToolWithInvalidDescription(t *testing.T) {
 	}()
 
 	// This should panic
-	ReflectTool[*TestToolWithInvalidDescription]()
+	ReflectTool(func() *TestToolWithInvalidDescription {
+		return &TestToolWithInvalidDescription{}
+	})
 }
