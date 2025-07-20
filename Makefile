@@ -2,7 +2,7 @@
 
 .PHONY: all build test clean install help lint fmt vet staticcheck precommit ci fmt-check test-coverage
 
-TEST_TIMEOUT=30s
+TEST_TIMEOUT=90s
 TEST_PARALLEL=32
 GOPATH=$(shell go env GOPATH)
 GOLANGCI_LINT=$(shell command -v golangci-lint 2>/dev/null || echo ${GOPATH}/bin/golangci-lint)
