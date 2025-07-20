@@ -234,8 +234,11 @@ func TestToolDescriptions(t *testing.T) {
 }
 
 func TestEmptyExpectBehavior_Integration(t *testing.T) {
-	// Create a real tmux session for testing
-	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
+	// Create a real tmux session for testing with a short prompt to avoid line wrapping in CI
+	env := map[string]string{
+		"PS1": "$ ", // Short prompt to prevent line wrapping
+	}
+	sessionName, err := createUniqueSessionWithEnv(t.Context(), "test", []string{"bash"}, env)
 	if err != nil {
 		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
