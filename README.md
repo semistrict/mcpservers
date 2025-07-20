@@ -16,7 +16,9 @@ Advanced tmux session management with safety features:
 
 **Tools**: `tmux_new_session`, `tmux_capture`, `tmux_send_keys`, `tmux_send_control_keys`, `tmux_list`, `tmux_kill`, `tmux_attach`, `tmux_bash`
 
-See [servers/tmux/README.md](servers/tmux/README.md) for detailed documentation.
+**Safety Features**: The hash-based safety system ensures commands are only executed if the session state matches expectations. When capturing output, the tool generates a SHA256 hash (first 8 characters) of the current session content. This hash must be provided when sending keys, ensuring commands are only executed if the session state hasn't changed.
+
+**Configuration**: Sessions are automatically detected based on the current git repository name. The server sanitizes repo names for tmux compatibility and falls back to 'tmux' prefix if not in a git repo.
 
 
 ## Development
@@ -55,18 +57,19 @@ make clean              # Remove build artifacts
 
 ## Building
 
-Build a specific server:
+Always use the Makefile to build:
 
 ```bash
-# Tmux server
-go build -o tmux-mcp ./servers/tmux/cmd/tmux-mcp
-
-# MCP testing utility
-go build -o mcptest ./cmd/mcptest
-
-# MCP wrapper (hot-reload during development)
-go build -o mcpwrapper ./cmd/mcpwrapper
+# Build all binaries to bin/ directory
+make build
 ```
+
+This builds:
+- `bin/tmux-mcp` - Tmux MCP server
+- `bin/mcptest` - MCP testing utility  
+- `bin/mcpwrapper` - Hot-reload wrapper for development
+
+Note: Avoid using `go build` directly as the Makefile ensures consistent build output locations.
 
 ## Testing with mcptest
 
