@@ -555,7 +555,7 @@ func (t *BashTool) handleCompletedCommand(ctx context.Context) {
 func sessionExists(ctx context.Context, sessionName string) bool {
 	_, err := runTmuxCommand(ctx, "has-session", "-t", sessionName)
 	if err != nil {
-		if strings.Contains(err.Error(), "can't find session") {
+		if strings.Contains(err.Error(), "can't find session") || strings.Contains(err.Error(), "no server running") {
 			return false
 		} else {
 			panic(fmt.Sprintf("failed to check session existence: %v", err))
@@ -670,7 +670,7 @@ func (t *BashTool) checkParameterName(name string) error {
 	}
 	for _, env := range os.Environ() {
 		envName, _, _ := strings.Cut(env, "=")
-		if strings.ToLower(name) == strings.ToLower(envName) {
+		if strings.EqualFold(name, envName) {
 			return fmt.Errorf("parameter %s has the same name as an existing environment variable, choose another name", name)
 		}
 	}

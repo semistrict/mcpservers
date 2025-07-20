@@ -2,6 +2,7 @@ package tmuxmcp
 
 import (
 	"context"
+	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
 	"time"
@@ -52,15 +53,19 @@ func TestWaitForExpected_CursorLineOnly_Integration(t *testing.T) {
 		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
 
+	res, err := waitForStability(t.Context(), sessionName)
+	assert.NoError(t, err)
+
 	// Send a command that will provide a recognizable prompt
-	sendKeysCommon(t.Context(), SendKeysOptions{
+	_, err = sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
-		Hash:        "any", // We'll bypass hash check by using empty contains
+		Hash:        res.Hash,
 		Keys:        "echo 'test-marker'",
 		Enter:       true,
 		Expect:      "", // Empty contains to skip waiting
 		Literal:     true,
 	})
+	assert.NoError(t, err)
 
 	// Wait for something that should appear on the cursor line
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(2*time.Second))

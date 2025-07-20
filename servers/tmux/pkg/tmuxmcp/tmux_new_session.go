@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/semistrict/mcpservers/pkg/mcpcommon"
+	"log/slog"
 	"time"
 )
 
@@ -41,7 +42,10 @@ func (t *NewSessionTool) Handle(ctx context.Context) (interface{}, error) {
 		sessions, err := findSessionsByPrefix(ctx, prefix)
 		if err == nil {
 			for _, session := range sessions {
-				killSession(ctx, session)
+				err = killSession(ctx, session)
+				if err != nil {
+					slog.ErrorContext(ctx, "failed to kill session", "session", session)
+				}
 			}
 		}
 	}

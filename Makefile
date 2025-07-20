@@ -4,6 +4,9 @@
 
 TEST_TIMEOUT=30s
 TEST_PARALLEL=32
+GOPATH=$(shell go env GOPATH)
+GOLANGCI_LINT=$(shell command -v golangci-lint 2>/dev/null || echo ${GOPATH}/bin/golangci-lint)
+STATICCHECK=$(shell command -v staticcheck 2>/dev/null || echo ${GOPATH}/bin/staticcheck)
 
 # Default target
 all: build test
@@ -28,18 +31,13 @@ test:
 test-coverage:
 	@echo "Running tests with coverage..."
 	mkdir -p out
-	go test -timeout 5s -v -coverprofile=out/coverage.out ./... || echo "Tests failed"
+	go test -timeout ${TEST_TIMEOUT} -v -coverprofile=out/coverage.out ./... || echo "Tests failed"
 	go tool cover -html=out/coverage.out -o out/coverage.html
 	@echo "Coverage report generated: out/coverage.html"
 
 # Lint the code
 lint:
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run; \
-	else \
-		echo "golangci-lint not found. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
-	fi
-
+	${GOLANGCI_LINT} run
 # Format the code
 fmt:
 	go fmt ./...
@@ -57,13 +55,7 @@ vet:
 
 # Run staticcheck
 staticcheck:
-	@if command -v staticcheck >/dev/null 2>&1; then \
-		staticcheck ./...; \
-	elif [ -f "$$(go env GOPATH)/bin/staticcheck" ]; then \
-		$$(go env GOPATH)/bin/staticcheck ./...; \
-	else \
-		echo "staticcheck not found. Install with: go install honnef.co/go/tools/cmd/staticcheck@latest"; \
-	fi
+	${STATICCHECK} ./...
 
 precommit: clean fmt vet staticcheck build test
 	@echo "Pre-commit checks passed!"
@@ -83,5 +75,5 @@ install: build
 
 
 # CI workflow
-ci: build test lint fmt-check vet staticcheck
+ci: build test-coverage lint fmt-check vet staticcheck
 	@echo "CI checks passed!"

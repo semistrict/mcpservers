@@ -192,7 +192,7 @@ func (w *MCPWrapper) stopUnderlyingServer() error {
 	}
 
 	// Wait for it to exit
-	w.currentProcess.Wait()
+	_ = w.currentProcess.Wait()
 	w.currentProcess = nil
 	w.currentStdin = nil
 	w.currentStdout = nil
@@ -655,8 +655,8 @@ func (w *MCPWrapper) logEvent(eventType, message string, details map[string]inte
 	}
 
 	logEntry += "\n"
-	w.logFile.WriteString(logEntry)
-	w.logFile.Sync() // Ensure it's written immediately
+	_, _ = w.logFile.WriteString(logEntry)
+	_ = w.logFile.Sync() // Ensure it's written immediately
 }
 
 func (w *MCPWrapper) Close() error {

@@ -36,14 +36,15 @@ func TestKillTool_Handle_CorrectHash(t *testing.T) {
 	}
 
 	// Send content to the session using the test infrastructure
-	sendKeysCommon(t.Context(), SendKeysOptions{
+	_, err = sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
-		Hash:        "any", // Skip hash verification with empty contains
+		Hash:        "any",
 		Keys:        "echo 'test content'",
 		Enter:       true,
 		Expect:      "", // Empty contains to skip waiting
 		Literal:     true,
 	})
+	assert.Error(t, err)
 
 	// Wait a moment for command to complete
 	time.Sleep(300 * time.Millisecond)
@@ -99,24 +100,26 @@ func TestKillTool_Handle_IncorrectHash(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Send initial content using test infrastructure
-	sendKeysCommon(t.Context(), SendKeysOptions{
+	_, err = sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
-		Hash:        rc.Hash, // Skip hash verification with empty contains
+		Hash:        rc.Hash,
 		Keys:        "echo 'initial content'",
 		Enter:       true,
 		Expect:      "", // Empty contains to skip waiting
 		Literal:     true,
 	})
+	assert.NoError(t, err)
 
 	// Change the session content
-	sendKeysCommon(t.Context(), SendKeysOptions{
+	_, err = sendKeysCommon(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
-		Hash:        "any", // Skip hash verification with empty contains
+		Hash:        "any",
 		Keys:        "echo 'changed content'",
 		Enter:       true,
 		Expect:      "", // Empty contains to skip waiting
 		Literal:     true,
 	})
+	assert.Error(t, err)
 
 	tool := &KillTool{
 		SessionTool: SessionTool{
@@ -169,21 +172,8 @@ func TestKillTool_Handle_PrefixResolution(t *testing.T) {
 		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
 
-	// Send content to the session using test infrastructure
-	sendKeysCommon(t.Context(), SendKeysOptions{
-		SessionName: sessionName,
-		Hash:        "any", // Skip hash verification with empty contains
-		Keys:        "echo 'test'",
-		Enter:       true,
-		Expect:      "", // Empty contains to skip waiting
-		Literal:     true,
-	})
-
-	// Wait a moment for command to complete
-	time.Sleep(300 * time.Millisecond)
-
 	// Get current hash using proper infrastructure
-	captureResult, err := capture(t.Context(), captureOptions{Prefix: sessionName})
+	captureResult, err := waitForStability(t.Context(), sessionName)
 	if err != nil {
 		t.Fatalf("Failed to capture session: %v", err)
 	}

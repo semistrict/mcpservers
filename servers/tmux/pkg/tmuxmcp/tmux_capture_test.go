@@ -57,11 +57,13 @@ func TestCaptureTool_Handle_WaitForChange_ContentChanges(t *testing.T) {
 	}
 
 	// Send initial content
-	sendKeysToSession(t.Context(), SendKeysOptions{
+	err = sendKeysToSession(t.Context(), SendKeysOptions{
 		SessionName: sessionName,
 		Keys:        "echo 'initial content'",
 		Enter:       true,
 	})
+
+	assert.NoError(t, err)
 
 	// Wait a moment for command to complete
 	time.Sleep(300 * time.Millisecond)
@@ -76,7 +78,7 @@ func TestCaptureTool_Handle_WaitForChange_ContentChanges(t *testing.T) {
 	// Send new content to change the session
 	go func() {
 		time.Sleep(200 * time.Millisecond)
-		sendKeysToSession(t.Context(), SendKeysOptions{
+		_ = sendKeysToSession(t.Context(), SendKeysOptions{
 			SessionName: sessionName,
 			Keys:        "echo 'changed content'",
 			Enter:       true,
@@ -119,16 +121,6 @@ func TestCaptureTool_Handle_WaitForChange_Timeout(t *testing.T) {
 		t.Fatalf("Could not create tmux session: %v", err)
 	}
 
-	// Send static content
-	sendKeysToSession(t.Context(), SendKeysOptions{
-		SessionName: sessionName,
-		Keys:        "echo 'static content'",
-		Enter:       true,
-	})
-
-	// Wait a moment for command to complete
-	time.Sleep(300 * time.Millisecond)
-
 	// Get initial hash
 	captureResult, err := capture(t.Context(), captureOptions{Prefix: sessionName})
 	if err != nil {
@@ -167,16 +159,6 @@ func TestCaptureTool_Handle_WaitForChange_DefaultTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not create tmux session: %v", err)
 	}
-
-	// Send some content
-	sendKeysToSession(t.Context(), SendKeysOptions{
-		SessionName: sessionName,
-		Keys:        "echo 'test'",
-		Enter:       true,
-	})
-
-	// Wait a moment for command to complete
-	time.Sleep(300 * time.Millisecond)
 
 	// Get the actual current hash first
 	captureResult, err := capture(t.Context(), captureOptions{Prefix: sessionName})
