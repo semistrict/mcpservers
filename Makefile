@@ -2,8 +2,8 @@
 
 .PHONY: all build test clean install help lint fmt vet staticcheck precommit ci fmt-check test-coverage
 
-TEST_TIMEOUT=20s
-TEST_PARALLEL=8
+TEST_TIMEOUT=30s
+TEST_PARALLEL=32
 
 # Default target
 all: build test

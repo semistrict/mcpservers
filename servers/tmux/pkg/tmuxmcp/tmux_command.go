@@ -38,7 +38,7 @@ func runTmuxCommand(ctx context.Context, args ...string) (string, error) {
 var createdSessions = make(map[string]struct{})
 var createdSessionsMu sync.Mutex
 
-func newSession(ctx context.Context, sessionName string, command []string) error {
+func newSession(ctx context.Context, sessionName string, command []string, environment map[string]string) error {
 	createdSessionsMu.Lock()
 	defer createdSessionsMu.Unlock()
 	if _, exists := createdSessions[sessionName]; exists {
@@ -46,6 +46,12 @@ func newSession(ctx context.Context, sessionName string, command []string) error
 	}
 	// Create a new tmux session with the given name and command
 	args := []string{"new-session", "-d", "-s", sessionName}
+
+	// Add environment variables using -e flag
+	for k, v := range environment {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
+	}
+
 	if len(command) > 0 {
 		args = append(args, command...)
 	}

@@ -3,6 +3,7 @@ package tmuxmcp
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -148,7 +149,7 @@ func TestBashTool_Handle_ContextCancellation(t *testing.T) {
 }
 
 func TestBashTool_Handle_OutputLimitingShort(t *testing.T) {
-	// Test with output less than 50 lines - should show all output
+	// Test with output less than 50 testLines - should show all output
 	result := run(t, &BashTool{
 		Prefix:           "test",
 		Command:          "for i in {1..10}; do echo \"Line $i\"; done",
@@ -156,7 +157,7 @@ func TestBashTool_Handle_OutputLimitingShort(t *testing.T) {
 		Timeout:          5,
 	})
 
-	// Should contain all lines without truncation
+	// Should contain all testLines without truncation
 	for i := 1; i <= 10; i++ {
 		expectedLine := fmt.Sprintf("Line %d", i)
 		assert.Contains(t, result, expectedLine)
@@ -177,6 +178,65 @@ func TestBashTool_Handle_WorkingDirectory(t *testing.T) {
 	assert.Contains(t, result, "[1]: /tmp")
 }
 
+func TestBashTool_Handle_WorkingDirectory_Default(t *testing.T) {
+	// Test that working directory defaults to current directory
+	cwd, err := os.Getwd()
+	assert.NoError(t, err, "Failed to get current working directory")
+
+	result := run(t, &BashTool{
+		Prefix:  "test",
+		Command: "pwd", // Print working directory
+		Timeout: 2,
+		// WorkingDirectory is intentionally not set
+	})
+
+	assert.Contains(t, result, fmt.Sprintf("[1]: %s", cwd))
+}
+
+func TestBashTool_Handle_Environment(t *testing.T) {
+	// Test that environment variables are properly set
+	result := run(t, &BashTool{
+		Prefix:           "test",
+		Command:          "echo \"VAR1=$TEST_VAR1 VAR2=$TEST_VAR2\"",
+		WorkingDirectory: "/tmp",
+		Environment: []string{
+			"TEST_VAR1=value1",
+			"TEST_VAR2=hello world",
+		},
+		Timeout: 2,
+	})
+
+	assert.Contains(t, result, "[1]: VAR1=value1 VAR2=hello world")
+}
+
+func TestBashTool_Handle_Environment_SpecialChars(t *testing.T) {
+	// Test environment variables with special characters
+	result := run(t, &BashTool{
+		Prefix:           "test",
+		Command:          "echo \"VAR=$TEST_VAR\"",
+		WorkingDirectory: "/tmp",
+		Environment: []string{
+			`TEST_VAR=special$chars\"with'quotes`,
+		},
+		Timeout: 2,
+	})
+
+	assert.Contains(t, result, "[1]: VAR=special$chars\"with'quotes")
+}
+
+func TestBashTool_Handle_Environment_Empty(t *testing.T) {
+	// Test that empty/nil environment map works fine
+	result := run(t, &BashTool{
+		Prefix:           "test",
+		Command:          "echo test",
+		WorkingDirectory: "/tmp",
+		Environment:      nil,
+		Timeout:          2,
+	})
+
+	assert.Contains(t, result, "[1]: test")
+}
+
 func TestBashTool_filtering(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -185,76 +245,88 @@ func TestBashTool_filtering(t *testing.T) {
 		BashTool
 	}{
 		{
-			name:        "no filters - should show all lines",
+			name:        "no filters - should show all testLines",
 			contains:    []string{"line 1", "line 50", "line 100"},
 			notContains: nil,
 			BashTool:    BashTool{},
 		},
 		{
-			name:        "head filter - first 10 lines",
+			name:        "head filter - first 10 testLines",
 			contains:    []string{"line 1", "line 5", "line 10"},
-			notContains: []string{"line 11", "line 50", "line 100"},
-			BashTool:    BashTool{Head: 10},
+			notContains: []string{"line 11", "line 50"},
+			BashTool:    BashTool{LineBudget: 20},
 		},
 		{
-			name:        "tail filter - last 10 lines",
+			name:        "tail filter - last 10 testLines",
 			contains:    []string{"line 91", "line 95", "line 100"},
-			notContains: []string{"line 1", "line 50", "line 90"},
-			BashTool:    BashTool{Tail: 10},
+			notContains: []string{"line 50", "line 90"},
+			BashTool:    BashTool{LineBudget: 20},
 		},
 		{
-			name:        "grep filter - lines containing '5'",
-			contains:    []string{"line 5", "line 15", "line 50", "line 95"},
+			name:        "grep filter - testLines containing '5'",
+			contains:    []string{"line 5", "line 15", "line 50", "line 57", "line 95"},
 			notContains: []string{"line 1", "line 2", "line 100"},
-			BashTool:    BashTool{Grep: "5"},
+			BashTool:    BashTool{Grep: "5", LineBudget: 20},
 		},
 		{
-			name:        "combined grep and head - lines containing '1' (first 3 results)",
-			contains:    []string{"line 1", "line 10", "line 11"},
+			name:        "combined grep and head - testLines containing '1' (first 3 results)",
+			contains:    []string{"line 1", "line 10", "line 91"},
 			notContains: []string{"line 12", "line 13", "line 21"},
-			BashTool:    BashTool{Head: 3, Grep: "1"},
+			BashTool:    BashTool{Grep: "1", LineBudget: 4},
 		},
 		{
-			name:        "combined grep and tail - lines containing '9' (last 5 results)",
-			contains:    []string{"line 95", "line 96", "line 97", "line 98", "line 99"},
-			notContains: []string{"line 9", "line 19", "line 89"},
-			BashTool:    BashTool{Tail: 5, Grep: "9"},
+			name:        "combined grep and tail - testLines containing '9' (last 5 results)",
+			contains:    []string{"line 9", "line 99"},
+			notContains: []string{"line 29", "line 23", "line 89"},
+			BashTool:    BashTool{Grep: "9", LineBudget: 3},
 		},
 		{
-			name:        "grep exclude filter - exclude lines containing '5'",
-			contains:    []string{"line 1", "line 2", "line 100"},
+			name:        "grep exclude filter - exclude testLines containing '5'",
+			contains:    []string{"line 1", "line 100"},
 			notContains: []string{"line 5", "line 15", "line 50", "line 95"},
-			BashTool:    BashTool{GrepExclude: "5"},
+			BashTool:    BashTool{GrepExclude: "5", LineBudget: 2},
 		},
 		{
-			name:        "combined grep and grep exclude - lines with '1' but not '5'",
+			name:        "grep exclude filter - exclude testLines containing '5' but with high budget",
+			contains:    []string{"line 4"},
+			notContains: []string{"line 5", "line 95"},
+			BashTool:    BashTool{GrepExclude: "5", LineBudget: 100},
+		},
+		{
+			name:        "combined grep and grep exclude - testLines with '1' but not '5'",
 			contains:    []string{"line 1", "line 10", "line 11", "line 12", "line 13", "line 14", "line 16", "line 17", "line 18", "line 19"},
 			notContains: []string{"line 15", "line 51"},
-			BashTool:    BashTool{Grep: "1", GrepExclude: "5"},
+			BashTool:    BashTool{Grep: "1", GrepExclude: "5", LineBudget: 20},
 		},
 		{
-			name:        "complex regex - lines ending with 0",
+			name:        "complex regex - testLines ending with 0",
 			contains:    []string{"line 10", "line 20", "line 30", "line 40", "line 50", "line 60", "line 70", "line 80", "line 90", "line 100"},
 			notContains: []string{"line 1", "line 11", "line 21", "line 99"},
-			BashTool:    BashTool{Grep: "0$"},
+			BashTool:    BashTool{Grep: "0$", LineBudget: 10},
 		},
 		{
-			name:        "complex regex - lines with exactly 2 digits",
+			name:        "complex regex - testLines with exactly 2 digits",
 			contains:    []string{"line 10", "line 11", "line 50", "line 99"},
 			notContains: []string{"line 1", "line 2", "line 100"},
-			BashTool:    BashTool{Grep: "line \\d{2}$"},
+			BashTool:    BashTool{Grep: "line \\d{2}$", LineBudget: 90},
 		},
 		{
-			name:        "complex regex exclude - exclude lines with double digits",
+			name:        "complex regex exclude - exclude testLines with double digits",
 			contains:    []string{"line 1", "line 2", "line 3", "line 4", "line 5", "line 6", "line 7", "line 8", "line 9", "line 10", "line 20", "line 30"},
 			notContains: []string{"line 11", "line 22", "line 33", "line 44", "line 55", "line 66", "line 77", "line 88", "line 99"},
-			BashTool:    BashTool{GrepExclude: "(11|22|33|44|55|66|77|88|99)"},
+			BashTool:    BashTool{GrepExclude: "(11|22|33|44|55|66|77|88|99)", LineBudget: 100},
 		},
 		{
-			name:        "complex regex combination - lines with 1 or 2, excluding those ending in 5",
+			name:        "complex regex combination - testLines with 1 or 2, excluding those ending in 5",
 			contains:    []string{"line 1", "line 2", "line 10", "line 11", "line 12", "line 13", "line 14", "line 16"},
 			notContains: []string{"line 15", "line 25", "line 3", "line 4"},
-			BashTool:    BashTool{Grep: "[12]", GrepExclude: "5$", Head: 8},
+			BashTool:    BashTool{Grep: "[12]", GrepExclude: "5$", LineBudget: 16},
+		},
+		{
+			name:        "complex regex combination - testLines with 1 or 2, excluding those ending in 5 - with context budget",
+			contains:    []string{"line 1", "line 2", "line 10", "line 11", "line 12", "line 13", "line 14", "line 16"},
+			notContains: []string{"line 15", "line 25", "line 3", "line 4"},
+			BashTool:    BashTool{Grep: "[12]", GrepExclude: "5$", LineBudget: 16},
 		},
 	}
 	for _, test := range tests {
@@ -263,33 +335,24 @@ func TestBashTool_filtering(t *testing.T) {
 			test.Command = "false"
 			test.WorkingDirectory = "/tmp"
 			assert.NoError(t, test.validateArgs())
-
-			l := test.filter(lines(100))
-			result := collect(t, l)
+			resultLines := test.filter(testLines(100))
+			var result strings.Builder
+			test.displayLines(&result, resultLines)
 			for _, contains := range test.contains {
-				assert.Contains(t, result, contains+"\n")
+				assert.Contains(t, result.String(), contains+"\n")
 			}
 			for _, notContains := range test.notContains {
-				assert.NotContains(t, result, notContains+"\n")
+				assert.NotContains(t, result.String(), notContains+"\n")
 			}
 		})
 	}
 }
 
-func collect(t *testing.T, l <-chan Line) string {
-	var buf strings.Builder
-	for line := range l {
-		assert.NoError(t, line.Error)
-		fmt.Fprintln(&buf, line.Content)
-	}
-	return buf.String()
-}
-
-func lines(n int) <-chan Line {
+func testLines(n int) <-chan Line {
 	lines := make(chan Line)
 	go func() {
 		for i := 0; i < n; i++ {
-			lines <- Line{i + 1, fmt.Sprintf("line %d", i+1), nil}
+			lines <- Line{Number: i + 1, Content: fmt.Sprintf("line %d", i+1), SelectedForOutput: true}
 		}
 		close(lines)
 	}()
@@ -298,8 +361,11 @@ func lines(n int) <-chan Line {
 
 func run(t *testing.T, bc *BashTool) string {
 	result, err := bc.Handle(t.Context())
-	assert.NoError(t, err)
-	return result.(string)
+	if assert.NoError(t, err) {
+		return result.(string)
+	} else {
+		return ""
+	}
 }
 
 func runErr(t *testing.T, bc *BashTool) string {

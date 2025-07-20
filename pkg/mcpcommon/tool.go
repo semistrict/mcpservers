@@ -42,7 +42,7 @@ func ReflectTool[T ToolHandler]() server.ServerTool {
 
 	return server.ServerTool{
 		Tool: tool,
-		Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		Handler: func(ctx context.Context, request mcp.CallToolRequest) (result *mcp.CallToolResult, err error) {
 			// Create new instance and populate from request arguments
 			var toolInstance T
 
@@ -62,14 +62,21 @@ func ReflectTool[T ToolHandler]() server.ServerTool {
 				return nil, fmt.Errorf("failed to unmarshal arguments: %v", err)
 			}
 
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("tool panic: %s", r)
+				}
+			}()
+
+			var rawResult any
 			// Call the handler
-			result, err := toolInstance.Handle(ctx)
+			rawResult, err = toolInstance.Handle(ctx)
 			if err != nil {
 				return nil, err
 			}
 
 			// Convert result to CallToolResult
-			return convertResult(result), nil
+			return convertResult(rawResult), nil
 		},
 	}
 }

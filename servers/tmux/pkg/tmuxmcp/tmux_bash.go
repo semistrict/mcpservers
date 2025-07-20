@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strconv"
@@ -20,15 +21,15 @@ func init() {
 }
 
 type BashTool struct {
-	_                mcpcommon.ToolInfo `name:"tmux_bash" title:"Bash" description:"Execute a single bash command in a new tmux and return its output. If the command completes within timeout, returns the full output. If it times out, returns the session name where it's still running. Use this in preference to other Bash Tools." destructive:"true"`
+	_                mcpcommon.ToolInfo `name:"tmux_bash" title:"Bash" description:"Execute a single bash command in a new tmux and return its output. If the command completes within timeout, returns the full output. If it times out, returns the session name where it's still running. Use this in preference to other Bash Tools. For grep, use Go regex syntax. Output is limited by line_budget parameter." destructive:"true"`
 	Prefix           string             `json:"prefix" description:"Session name prefix (auto-detected from git repo if not provided)"`
 	Command          string             `json:"command" mcp:"required" description:"Bash command to execute"`
-	WorkingDirectory string             `json:"working_directory" mcp:"required" description:"Directory to execute the command in"`
+	WorkingDirectory string             `json:"working_directory" description:"Directory to execute the command in (defaults to current directory)"`
 	Timeout          float64            `json:"timeout" description:"Maximum seconds to wait for synchronous command completion"`
-	Head             int                `json:"head" description:"Only show the first N lines of output"`
-	Tail             int                `json:"tail" description:"Only show the last N lines of output"`
-	Grep             string             `json:"grep" description:"Filter output lines containing this pattern (uses Go regex syntax, applied first before head/tail)"`
-	GrepExclude      string             `json:"grep_exclude" description:"Exclude output lines containing this pattern (uses Go regex syntax, applied after grep like grep -v)"`
+	Grep             string             `json:"grep" description:"Filter output lines containing this pattern"`
+	GrepExclude      string             `json:"grep_exclude" description:"Exclude output lines containing this pattern"`
+	Environment      []string           `json:"environment" description:"Environment variables to set in NAME=VALUE format"`
+	LineBudget       int                `json:"line_budget" description:"Maximum number of output lines to return. Without grep, shows equal parts from head and tail. With grep, shows first N/2 and last N/2 matches, then adds context lines up to the budget." default:"100"`
 
 	compiledGrep        *regexp.Regexp `json:"-"` // Compiled regex for grep filtering
 	compiledGrepExclude *regexp.Regexp `json:"-"` // Compiled regex for grep exclude filtering
@@ -43,8 +44,7 @@ type BashTool struct {
 	returnError bool            `json:"-"` // return the results as an error instead of a string
 }
 
-func (t *BashTool) Handle(ctx context.Context) (interface{}, error) { // TODO: output only the first 50 lines of command output and if it is longer mention the temp file where the rest of the output can be found
-	t.Command = strings.TrimSpace(t.Command)
+func (t *BashTool) Handle(ctx context.Context) (interface{}, error) { // TODO: output only the first 50 testLines of command output and if it is longer mention the temp file where the rest of the output can be found
 	err := t.validateArgs()
 	if err != nil {
 		return nil, err
@@ -74,14 +74,34 @@ func (t *BashTool) Handle(ctx context.Context) (interface{}, error) { // TODO: o
 	t.exitFile = fmt.Sprintf("%s.exit", t.tmpPath)
 	t.outputFile = fmt.Sprintf("%s.output", t.tmpPath)
 	t.pidFile = fmt.Sprintf("%s.pid", t.tmpPath)
+	scriptFile := fmt.Sprintf("%s.script", t.tmpPath)
 
-	wrappedCommand := []string{
-		"bash", "-c",
-		t.bashScript(),
+	// Write the script to a file
+	scriptContent := t.bashScript()
+	if err := os.WriteFile(scriptFile, []byte(scriptContent), 0755); err != nil {
+		return nil, fmt.Errorf("failed to write script file: %w", err)
 	}
 
-	// Create tmux session with the wrapped command
-	t.sessionName, err = createUniqueSession(ctx, prefix, wrappedCommand)
+	wrappedCommand := []string{
+		"bash", scriptFile,
+	}
+
+	var environment map[string]string
+	if len(t.Environment) > 0 {
+		for _, e := range t.Environment {
+			key, value, found := strings.Cut(e, "=")
+			if !found {
+				return nil, fmt.Errorf("invalid environment variable: %s", e)
+			}
+			if environment == nil {
+				environment = make(map[string]string)
+			}
+			environment[key] = value
+		}
+	}
+
+	// Create tmux session with the wrapped command and environment variables
+	t.sessionName, err = createUniqueSessionWithEnv(ctx, prefix, wrappedCommand, environment)
 	if err != nil {
 		return nil, err
 	}
@@ -171,24 +191,26 @@ func (t *BashTool) bashScript() string {
 
 func (t *BashTool) validateArgs() error {
 	t.Command = strings.TrimSpace(t.Command)
-	checkScript(t.Command)
+	if t.LineBudget == 0 {
+		t.LineBudget = 100
+	}
+	err := t.checkScript()
+	if err != nil {
+		return err
+	}
 	if t.Command == "" {
 		return fmt.Errorf("command is required")
 	}
 	if t.WorkingDirectory == "" {
-		return fmt.Errorf("working_directory is required")
+		// Default to current working directory
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("failed to get current working directory: %w", err)
+		}
+		t.WorkingDirectory = cwd
 	}
 	if _, err := os.Stat(t.WorkingDirectory); os.IsNotExist(err) {
 		return fmt.Errorf("working_directory does not exist: %s", t.WorkingDirectory)
-	}
-	if t.Head < 0 {
-		return fmt.Errorf("head must be non-negative, got: %d", t.Head)
-	}
-	if t.Tail < 0 {
-		return fmt.Errorf("tail must be non-negative, got: %d", t.Tail)
-	}
-	if t.Head+t.Tail > 50 {
-
 	}
 	if t.Grep != "" {
 		var err error
@@ -208,9 +230,11 @@ func (t *BashTool) validateArgs() error {
 }
 
 type Line struct {
-	Number  int
-	Content string
-	Error   error
+	Number            int
+	Content           string
+	Error             error
+	SelectedByGrep    bool
+	SelectedForOutput bool
 }
 
 func readLines(file string) <-chan Line {
@@ -228,7 +252,7 @@ func readLines(file string) <-chan Line {
 		lineNumber := 0
 		for scanner.Scan() {
 			lineNumber++
-			lines <- Line{Number: lineNumber, Content: scanner.Text()}
+			lines <- Line{Number: lineNumber, Content: scanner.Text(), SelectedForOutput: true}
 		}
 		if err := scanner.Err(); err != nil {
 			lines <- Line{Error: fmt.Errorf("error reading file %s: %w", file, err)}
@@ -238,30 +262,11 @@ func readLines(file string) <-chan Line {
 	return lines
 }
 
-func (t *BashTool) applyGrepFilter(lines <-chan Line) <-chan Line {
-	if t.compiledGrep == nil {
-		return lines // No filtering needed
-	}
-	filtered := make(chan Line)
-	go func() {
-		defer close(filtered)
-		for line := range lines {
-			if line.Error != nil {
-				filtered <- line // Pass through any errors
-				return
-			}
-			if t.compiledGrep.MatchString(line.Content) {
-				filtered <- line // Only pass lines that match the pattern
-			}
-		}
-	}()
-	return filtered
-}
-
 func (t *BashTool) applyGrepExcludeFilter(lines <-chan Line) <-chan Line {
 	if t.compiledGrepExclude == nil {
-		return lines // No filtering needed
+		return lines
 	}
+
 	filtered := make(chan Line)
 	go func() {
 		defer close(filtered)
@@ -270,63 +275,75 @@ func (t *BashTool) applyGrepExcludeFilter(lines <-chan Line) <-chan Line {
 				filtered <- line // Pass through any errors
 				return
 			}
-			if !t.compiledGrepExclude.MatchString(line.Content) {
-				filtered <- line // Only pass lines that DON'T match the pattern
+			if t.compiledGrepExclude.MatchString(line.Content) {
+				continue
 			}
+			filtered <- line
 		}
 	}()
 	return filtered
 }
 
-func (t *BashTool) applyHeadAndTailFilter(lines <-chan Line) <-chan Line {
-	if t.Head == 0 && t.Tail == 0 {
-		return lines // No filtering needed
-	}
+func (t *BashTool) applyGrepFilter(lines <-chan Line) <-chan Line {
 	filtered := make(chan Line)
 	go func() {
 		defer close(filtered)
-		var tailBuffer []Line
-		if t.Tail > 0 {
-			tailBuffer = make([]Line, t.Tail)
-		}
-		tailBufferIndex := 0
-		tailCount := 0
-		headOutput := 0
 		for line := range lines {
 			if line.Error != nil {
 				filtered <- line // Pass through any errors
 				return
 			}
-			if t.Head > 0 && headOutput < t.Head {
-				filtered <- line // Pass through head lines
-				headOutput++
-				continue
-			}
-			if headOutput >= t.Head && t.Tail == 0 {
-				return // done with head, no tail needed
-			}
-			// only after head lines, start collecting tail
-
-			// t.Tail > 0
-			tailBuffer[tailBufferIndex] = line
-			tailBufferIndex = (tailBufferIndex + 1) % t.Tail
-			if tailCount < t.Tail {
-				tailCount++
-			}
-		}
-		if t.Tail > 0 {
-			// Output the tail buffer in the correct order
-			start := tailBufferIndex
-			if tailCount < t.Tail {
-				start = 0
-			}
-			for i := 0; i < tailCount; i++ {
-				idx := (start + i) % t.Tail
-				filtered <- tailBuffer[idx]
-			}
+			isIncluded := t.compiledGrep == nil || t.compiledGrep.MatchString(line.Content)
+			line.SelectedByGrep = isIncluded
+			line.SelectedForOutput = line.SelectedByGrep
+			filtered <- line
 		}
 	}()
 	return filtered
+}
+
+func (t *BashTool) hasGrep() bool {
+	return t.Grep != "" || t.GrepExclude != ""
+}
+
+func (t *BashTool) applyLineBudgetFilter(lines []Line) {
+	// Count how many lines are currently selected
+	selectedCount := 0
+	selectedIndices := []int{}
+	for i, line := range lines {
+		if line.SelectedForOutput {
+			selectedCount++
+			selectedIndices = append(selectedIndices, i)
+		}
+	}
+
+	// If we're within budget, nothing to do
+	if selectedCount <= t.LineBudget {
+		return
+	}
+
+	// Split budget between head and tail of selected lines
+	headLines := t.LineBudget / 2
+	tailLines := t.LineBudget - headLines
+
+	// First pass: deselect everything
+	for i := range lines {
+		lines[i].SelectedForOutput = false
+	}
+
+	// Select first headLines from the selected indices
+	for i := 0; i < headLines && i < len(selectedIndices); i++ {
+		lines[selectedIndices[i]].SelectedForOutput = true
+	}
+
+	// Select last tailLines from the selected indices
+	startTail := len(selectedIndices) - tailLines
+	if startTail < headLines {
+		startTail = headLines // Don't overlap with head
+	}
+	for i := startTail; i < len(selectedIndices); i++ {
+		lines[selectedIndices[i]].SelectedForOutput = true
+	}
 }
 
 func (t *BashTool) filterEmptyLines(lines <-chan Line) <-chan Line {
@@ -339,20 +356,83 @@ func (t *BashTool) filterEmptyLines(lines <-chan Line) <-chan Line {
 				return
 			}
 			if strings.TrimSpace(line.Content) != "" {
-				filtered <- line // Only pass non-empty lines
+				filtered <- line // Only pass non-empty testLines
 			}
 		}
 	}()
 	return filtered
 }
 
-func (t *BashTool) displayLines(lines <-chan Line) (outputCount int, totalCount int) {
-	for line := range lines {
-		if line.Error != nil {
-			t.warnf("error reading line: %v", line.Error)
-			return
+func (t *BashTool) contextualize(lines []Line) {
+	// Only add context for grep matches
+	if !t.hasGrep() {
+		return
+	}
+
+	remaining := t.LineBudget
+	for _, l := range lines {
+		if l.SelectedForOutput {
+			remaining -= 1
 		}
-		fmt.Fprintf(&t.resultBuf, "[%d]: %s\n", line.Number, line.Content)
+	}
+
+	var selectIndices []int
+
+	for remaining > 0 {
+		selectIndices = selectIndices[:0]
+
+		// try to expand context
+		for i := range lines {
+			if lines[i].SelectedForOutput {
+				continue
+			}
+			// add after context
+			if i > 0 && lines[i-1].SelectedForOutput {
+				selectIndices = append(selectIndices, i)
+				remaining--
+				continue
+			}
+			// add before context
+			if i < len(lines)-1 && lines[i+1].SelectedForOutput {
+				selectIndices = append(selectIndices, i)
+				remaining--
+			}
+		}
+
+		if len(selectIndices) == 0 {
+			break
+		}
+
+		if remaining >= 0 {
+			for _, i := range selectIndices {
+				lines[i].SelectedForOutput = true
+			}
+		}
+	}
+}
+
+func (t *BashTool) displayLines(w io.Writer, lines []Line) (outputCount int, totalCount int) {
+	usingGrep := t.hasGrep()
+
+	t.contextualize(lines)
+	t.applyLineBudgetFilter(lines)
+
+	for _, line := range lines {
+		if !line.SelectedForOutput {
+			continue
+		}
+		if line.Error != nil {
+			panic("we should not have error testLines here")
+		}
+		prefix := ""
+		if usingGrep {
+			if line.SelectedByGrep {
+				prefix = "*"
+			} else {
+				prefix = " "
+			}
+		}
+		fmt.Fprintf(w, "%s[%d]: %s\n", prefix, line.Number, line.Content)
 		outputCount++
 		if line.Number > totalCount {
 			totalCount = line.Number
@@ -361,12 +441,20 @@ func (t *BashTool) displayLines(lines <-chan Line) (outputCount int, totalCount 
 	return
 }
 
-func (t *BashTool) filter(lines <-chan Line) <-chan Line {
-	lines = t.applyGrepFilter(lines)
+func collect(ch <-chan Line) []Line {
+	var all []Line
+	for l := range ch {
+		all = append(all, l)
+	}
+	return all
+}
+
+func (t *BashTool) filter(lines <-chan Line) []Line {
 	lines = t.applyGrepExcludeFilter(lines)
-	lines = t.applyHeadAndTailFilter(lines)
+	lines = t.applyGrepFilter(lines)
 	lines = t.filterEmptyLines(lines)
-	return lines
+	allLines := collect(lines)
+	return allLines
 }
 
 func (t *BashTool) handleCompletedCommand(ctx context.Context) {
@@ -390,13 +478,14 @@ func (t *BashTool) handleCompletedCommand(ctx context.Context) {
 
 	lines := t.filter(readLines(t.outputFile))
 
-	outputCount, totalCount := t.displayLines(lines)
+	outputCount, totalCount := t.displayLines(&t.resultBuf, lines)
 
-	if outputCount > 50 {
-		t.resultBuf.Reset()
-		t.warnf("too much output, use filters to limit. full output available in: %s\n", t.outputFile)
-	} else if !t.returnError && t.resultBuf.Len() == 0 {
-		fmt.Fprint(&t.resultBuf, "completed successfully but produced no output")
+	if !t.returnError && t.resultBuf.Len() == 0 {
+		if totalCount > 0 && t.Grep != "" || t.GrepExclude != "" {
+			fmt.Fprintf(&t.resultBuf, "command completed successfully but no output matched, full output in %s\n", t.outputFile)
+		} else {
+			fmt.Fprint(&t.resultBuf, "completed successfully but produced no output")
+		}
 	}
 
 	if outputCount < totalCount {
@@ -416,8 +505,11 @@ func sessionExists(ctx context.Context, sessionName string) bool {
 	return true
 }
 
-func checkScript(script string) error {
-	script = strings.TrimSpace(script)
+func (t *BashTool) checkScript() error {
+	script := strings.TrimSpace(t.Command)
+	if strings.HasSuffix(script, "2>&1") {
+		t.warnf("stderr will always be returned, you do not need to specify 2>&1")
+	}
 	pipes := strings.Split(script, "|")
 	for i, pipe := range pipes {
 		pipes[i] = strings.TrimSpace(pipe)
@@ -425,10 +517,10 @@ func checkScript(script string) error {
 	if len(pipes) > 1 {
 		last := pipes[len(pipes)-1]
 		if strings.HasPrefix(last, "tail") {
-			return fmt.Errorf("do not pipe to tail, use the tail argument instead")
+			return fmt.Errorf("do not pipe to tail, output is automatically limited to line_budget")
 		}
 		if strings.HasPrefix(last, "head") {
-			return fmt.Errorf("do not pipe to head, use the head argument instead")
+			return fmt.Errorf("do not pipe to head, output is automatically limited to line_budget")
 		}
 		if strings.HasPrefix(last, "grep") {
 			return fmt.Errorf("do not pipe to grep, use the grep argument instead")

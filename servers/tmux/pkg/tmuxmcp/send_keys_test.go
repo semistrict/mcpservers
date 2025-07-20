@@ -327,7 +327,7 @@ func TestEnterFlagHandling_Integration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel() // Run subtests in parallel
-			
+
 			var err error
 			tt.opts.SessionName, err = createUniqueSession(t.Context(), "test", []string{"bash"})
 			assert.NoError(t, err)

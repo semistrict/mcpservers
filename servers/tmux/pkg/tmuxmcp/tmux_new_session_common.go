@@ -14,6 +14,11 @@ import (
 // createUniqueSession creates a new tmux session with a unique name
 // It will try random numbers until it finds an available session name
 func createUniqueSession(ctx context.Context, prefix string, command []string) (string, error) {
+	return createUniqueSessionWithEnv(ctx, prefix, command, nil)
+}
+
+// createUniqueSessionWithEnv creates a new tmux session with a unique name and environment variables
+func createUniqueSessionWithEnv(ctx context.Context, prefix string, command []string, environment map[string]string) (string, error) {
 	if prefix == "" {
 		prefix = detectPrefix()
 	}
@@ -47,7 +52,7 @@ func createUniqueSession(ctx context.Context, prefix string, command []string) (
 		sessionName := fmt.Sprintf("%s-%d", baseName, randomNum)
 
 		// Try to create the session
-		err := newSession(ctx, sessionName, command)
+		err := newSession(ctx, sessionName, command, environment)
 
 		if err == nil {
 			// Success! Return the session name

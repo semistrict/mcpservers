@@ -226,7 +226,7 @@ func formatOutput(output string) string {
 			}
 		} else {
 			if emptyCount > 1 {
-				formatted = append(formatted, fmt.Sprintf("... %d empty lines ...", emptyCount))
+				formatted = append(formatted, fmt.Sprintf("... %d empty testLines ...", emptyCount))
 			}
 			emptyCount = 0
 			formatted = append(formatted, fmt.Sprintf("[%d]: %s", lineNum, line))
@@ -234,7 +234,7 @@ func formatOutput(output string) string {
 	}
 
 	if emptyCount > 1 {
-		formatted = append(formatted, fmt.Sprintf("... %d empty lines ...", emptyCount))
+		formatted = append(formatted, fmt.Sprintf("... %d empty testLines ...", emptyCount))
 	}
 
 	return strings.Join(formatted, "\n")
