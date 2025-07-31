@@ -57,27 +57,31 @@ func init() {
 			"required": ["name", "description"]
 		}
 	`)
-	Tools = append(Tools, mcpcommon.ReflectTool(func() *BashTool {
-		wd, err := os.Getwd()
-		if err != nil {
-			slog.Error("failed to get wd", "err", err)
-			wd = "/tmp"
-		}
-		return &BashTool{
-			LineBudget:       100,
-			WorkingDirectory: wd,
-			Timeout:          10.0,
-			Prefix:           detectPrefix(),
-		}
-	}))
+	Tools = append(Tools, mcpcommon.ReflectTool(NewBashTool))
+}
+
+func NewBashTool() *BashTool {
+	wd, err := os.Getwd()
+	if err != nil {
+		slog.Error("failed to get wd", "err", err)
+		wd = "/tmp"
+	}
+	return &BashTool{
+		LineBudget:       100,
+		WorkingDirectory: wd,
+		Timeout:          10.0,
+		Background:       false,
+		Prefix:           detectPrefix(),
+	}
 }
 
 type BashTool struct {
-	_                mcpcommon.ToolInfo `name:"bash" title:"Bash" description:"Execute a single bash command in a new tmux and return its output. If the command completes within timeout, returns the full output. If it times out, returns the session name where it's still running. Use this in preference to other Bash Tools. For grep, use Go regex syntax. Output is limited by line_budget parameter. Note: if the user asks you to \"make a new tool\", use the save_as parameter." destructive:"true"`
+	_                mcpcommon.ToolInfo `name:"bash" title:"Bash" description:"Execute a single bash command in a new tmux. By default, this runs synchronously, waiting for the command to complete (up to the timeout) and returning the output. Set background=true to run in the background and return immediately." destructive:"true"`
 	Prefix           string             `json:"prefix" description:"Session name prefix (auto-detected from git repo if not provided)"`
 	Command          string             `json:"command" mcp:"required" description:"Bash command to execute"`
+	Background       bool               `json:"background,omitempty" description:"Run command in the background and return immediately. Defaults to false."`
 	WorkingDirectory string             `json:"working_directory" description:"Directory to execute the command in (defaults to current directory)"`
-	Timeout          float64            `json:"timeout" description:"Maximum seconds to wait for synchronous command completion"`
+	Timeout          float64            `json:"timeout" description:"Maximum seconds to wait for synchronous command completion. Only applies when background=false."`
 	Grep             string             `json:"grep" description:"Filter output lines containing this pattern"`
 	GrepExclude      string             `json:"grep_exclude" description:"Exclude output lines containing this pattern"`
 	Environment      []string           `json:"environment" description:"Environment variables to set in NAME=VALUE format"`
@@ -117,6 +121,9 @@ func (t *BashTool) Handle(ctx context.Context) (any, error) { // TODO: output on
 	}
 
 	timeout := t.Timeout
+	if t.Background {
+		timeout = 0
+	}
 	prefix := t.Prefix
 
 	// Create temporary file to capture all output

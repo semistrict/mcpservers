@@ -67,12 +67,11 @@ func TestBashTool_Simple(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel() // Run subtests in parallel
 
-			tool := &BashTool{
-				Prefix:           "test",
-				Command:          tt.command,
-				WorkingDirectory: "/tmp",
-				Timeout:          2,
-			}
+			tool := NewBashTool()
+			tool.Prefix = "test"
+			tool.Command = tt.command
+			tool.WorkingDirectory = "/tmp"
+			tool.Timeout = 2
 
 			if tt.asError {
 				errMsg := runErr(t, tool)
@@ -86,23 +85,23 @@ func TestBashTool_Simple(t *testing.T) {
 }
 
 func TestBashTool_Handle_DefaultTimeout(t *testing.T) {
-	result := run(t, &BashTool{
-		Prefix:           "test",
-		Command:          "echo test",
-		WorkingDirectory: "/tmp",
-		Timeout:          2, // Override default for testing
-	})
+	tool := NewBashTool()
+	tool.Prefix = "test"
+	tool.Command = "echo test"
+	tool.WorkingDirectory = "/tmp"
+	tool.Timeout = 2 // Override default for testing
+	result := run(t, tool)
 
 	assert.Contains(t, result, "test")
 }
 
 func TestBashTool_Handle_ComplexOutput(t *testing.T) {
-	result := run(t, &BashTool{
-		Prefix:           "test",
-		Command:          "echo 'line1'; echo 'line2' >&2; echo 'line3'", // mixed stdout/stderr
-		WorkingDirectory: "/tmp",
-		Timeout:          2,
-	})
+	tool := NewBashTool()
+	tool.Prefix = "test"
+	tool.Command = "echo 'line1'; echo 'line2' >&2; echo 'line3'" // mixed stdout/stderr
+	tool.WorkingDirectory = "/tmp"
+	tool.Timeout = 2
+	result := run(t, tool)
 
 	// Should capture both stdout and stderr due to 2>&1 | tee
 	assert.Contains(t, result, "line1")
@@ -113,12 +112,12 @@ func TestBashTool_Handle_ComplexOutput(t *testing.T) {
 func TestBashTool_Handle_SpecialCharacters(t *testing.T) {
 	// Test with a string that has special characters but no variables to expand
 	specialString := `hello "world" with 'quotes' and \backslashes`
-	result := run(t, &BashTool{
-		Prefix:           "test",
-		Command:          fmt.Sprintf("echo %s", strconv.Quote(specialString)),
-		WorkingDirectory: "/tmp",
-		Timeout:          2,
-	})
+	tool := NewBashTool()
+	tool.Prefix = "test"
+	tool.Command = fmt.Sprintf("echo %s", strconv.Quote(specialString))
+	tool.WorkingDirectory = "/tmp"
+	tool.Timeout = 2
+	result := run(t, tool)
 
 	// Check that quotes and backslashes are preserved
 	assert.Contains(t, result, `"world"`)
@@ -127,12 +126,11 @@ func TestBashTool_Handle_SpecialCharacters(t *testing.T) {
 }
 
 func TestBashTool_Handle_ContextCancellation(t *testing.T) {
-	tool := &BashTool{
-		Prefix:           "test",
-		Command:          "sleep 2",
-		WorkingDirectory: "/tmp",
-		Timeout:          5,
-	}
+	tool := NewBashTool()
+	tool.Prefix = "test"
+	tool.Command = "sleep 2"
+	tool.WorkingDirectory = "/tmp"
+	tool.Timeout = 5
 
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(500*time.Millisecond))
 	defer cancel()
@@ -150,12 +148,12 @@ func TestBashTool_Handle_ContextCancellation(t *testing.T) {
 
 func TestBashTool_Handle_OutputLimitingShort(t *testing.T) {
 	// Test with output less than 50 testLines - should show all output
-	result := run(t, &BashTool{
-		Prefix:           "test",
-		Command:          "for i in {1..10}; do echo \"Line $i\"; done",
-		WorkingDirectory: "/tmp",
-		Timeout:          5,
-	})
+	tool := NewBashTool()
+	tool.Prefix = "test"
+	tool.Command = "for i in {1..10}; do echo \"Line $i\"; done"
+	tool.WorkingDirectory = "/tmp"
+	tool.Timeout = 5
+	result := run(t, tool)
 
 	// Should contain all testLines without truncation
 	for i := 1; i <= 10; i++ {
@@ -168,12 +166,12 @@ func TestBashTool_Handle_OutputLimitingShort(t *testing.T) {
 }
 
 func TestBashTool_Handle_WorkingDirectory(t *testing.T) {
-	result := run(t, &BashTool{
-		Prefix:           "test",
-		Command:          "pwd", // Print working directory
-		WorkingDirectory: "/tmp",
-		Timeout:          2,
-	})
+	tool := NewBashTool()
+	tool.Prefix = "test"
+	tool.Command = "pwd" // Print working directory
+	tool.WorkingDirectory = "/tmp"
+	tool.Timeout = 2
+	result := run(t, tool)
 
 	assert.Contains(t, result, "[1]: /tmp")
 }
@@ -183,58 +181,68 @@ func TestBashTool_Handle_WorkingDirectory_Default(t *testing.T) {
 	cwd, err := os.Getwd()
 	assert.NoError(t, err, "Failed to get current working directory")
 
-	result := run(t, &BashTool{
-		Prefix:  "test",
-		Command: "pwd", // Print working directory
-		Timeout: 2,
-		// WorkingDirectory is intentionally not set
-	})
+	tool := NewBashTool()
+	tool.Prefix = "test"
+	tool.Command = "pwd" // Print working directory
+	tool.Timeout = 2
+	// WorkingDirectory is intentionally not set, should default to current dir
+	result := run(t, tool)
 
 	assert.Contains(t, result, fmt.Sprintf("[1]: %s", cwd))
 }
 
 func TestBashTool_Handle_Environment(t *testing.T) {
 	// Test that environment variables are properly set
-	result := run(t, &BashTool{
-		Prefix:           "test",
-		Command:          "echo \"VAR1=$TEST_VAR1 VAR2=$TEST_VAR2\"",
-		WorkingDirectory: "/tmp",
-		Environment: []string{
-			"TEST_VAR1=value1",
-			"TEST_VAR2=hello world",
-		},
-		Timeout: 2,
-	})
+	tool := NewBashTool()
+	tool.Prefix = "test"
+	tool.Command = "echo \"VAR1=$TEST_VAR1 VAR2=$TEST_VAR2\""
+	tool.WorkingDirectory = "/tmp"
+	tool.Environment = []string{
+		"TEST_VAR1=value1",
+		"TEST_VAR2=hello world",
+	}
+	tool.Timeout = 2
+	result := run(t, tool)
 
 	assert.Contains(t, result, "[1]: VAR1=value1 VAR2=hello world")
 }
 
 func TestBashTool_Handle_Environment_SpecialChars(t *testing.T) {
 	// Test environment variables with special characters
-	result := run(t, &BashTool{
-		Prefix:           "test",
-		Command:          "echo \"VAR=$TEST_VAR\"",
-		WorkingDirectory: "/tmp",
-		Environment: []string{
-			`TEST_VAR=special$chars\"with'quotes`,
-		},
-		Timeout: 2,
-	})
+	tool := NewBashTool()
+	tool.Prefix = "test"
+	tool.Command = "echo \"VAR=$TEST_VAR\""
+	tool.WorkingDirectory = "/tmp"
+	tool.Environment = []string{
+		`TEST_VAR=special$chars\"with'quotes`,
+	}
+	tool.Timeout = 2
+	result := run(t, tool)
 
 	assert.Contains(t, result, `[1]: VAR=special$chars\"with'quotes`)
 }
 
 func TestBashTool_Handle_Environment_Empty(t *testing.T) {
 	// Test that empty/nil environment map works fine
-	result := run(t, &BashTool{
-		Prefix:           "test",
-		Command:          "echo test",
-		WorkingDirectory: "/tmp",
-		Environment:      nil,
-		Timeout:          2,
-	})
+	tool := NewBashTool()
+	tool.Prefix = "test"
+	tool.Command = "echo test"
+	tool.WorkingDirectory = "/tmp"
+	tool.Environment = nil
+	tool.Timeout = 2
+	result := run(t, tool)
 
 	assert.Contains(t, result, "[1]: test")
+}
+
+func TestBashTool_Handle_Background(t *testing.T) {
+	tool := NewBashTool()
+	tool.Command = "sleep 5"
+	tool.Background = true
+	tool.Timeout = 2 // This timeout should be ignored
+
+	errMsg := runErr(t, tool)
+	assert.Contains(t, errMsg, "timed out waiting for command in session")
 }
 
 func TestBashTool_filtering(t *testing.T) {
