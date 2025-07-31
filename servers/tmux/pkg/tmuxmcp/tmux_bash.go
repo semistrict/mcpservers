@@ -82,6 +82,7 @@ type BashTool struct {
 	GrepExclude      string             `json:"grep_exclude" description:"Exclude output lines containing this pattern"`
 	Environment      []string           `json:"environment" description:"Environment variables to set in NAME=VALUE format"`
 	LineBudget       int                `json:"line_budget" description:"Maximum number of output lines to return. Without grep, shows equal parts from head and tail. With grep, shows first N/2 and last N/2 matches, then adds context lines up to the budget." default:"100"`
+	Background       bool               `json:"background" description:"Run command in background mode - wait for output stability and return snapshot instead of waiting for completion"`
 	SaveAs           *SaveAs            `json:"save_as" description:"Save this invocation as a new tool. If this argument is provided, the command will not actually be run but a new tool will be created matching the invocation."`
 
 	compiledGrep        *regexp.Regexp `json:"-"` // Compiled regex for grep filtering
@@ -163,6 +164,24 @@ func (t *BashTool) Handle(ctx context.Context) (any, error) { // TODO: output on
 	t.sessionName, err = createUniqueSessionWithEnv(ctx, prefix, wrappedCommand, environment)
 	if err != nil {
 		return nil, err
+	}
+
+	// In background mode, wait for output stability instead of completion
+	if t.Background {
+		ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+		defer cancel()
+
+		_, err := waitForStability(ctx, t.sessionName)
+		if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			// Only warn about non-timeout errors
+			t.warnf("error waiting for stability: %v", err)
+			t.returnError = true
+		}
+		// For timeout errors, we still have output to show, which is expected behavior
+
+		// Process output from file just like normal completion
+		// The command is still running, but we have stable output to show
+		return t.finish(ctx)
 	}
 
 	// Wait for completion or timeout
@@ -517,21 +536,24 @@ func (t *BashTool) filter(lines <-chan Line) []Line {
 }
 
 func (t *BashTool) handleCompletedCommand(ctx context.Context) {
-	exitCodeBytes, err := os.ReadFile(t.exitFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			t.warnf("exit file %s does not exist, command may not have completed", t.exitFile)
-		} else {
-			t.warnf("failed to read exit file %s: %v", t.exitFile, err)
-		}
-		t.returnError = true
-	} else {
-		exitCode := strings.TrimSpace(string(exitCodeBytes))
-		if exitCode != "0" {
-			t.warnf("command FAILED with exit code: %s", exitCode)
+	// In background mode, we don't expect an exit file yet
+	if !t.Background {
+		exitCodeBytes, err := os.ReadFile(t.exitFile)
+		if err != nil {
+			if os.IsNotExist(err) {
+				t.warnf("exit file %s does not exist, command may not have completed", t.exitFile)
+			} else {
+				t.warnf("failed to read exit file %s: %v", t.exitFile, err)
+			}
 			t.returnError = true
 		} else {
-			t.returnError = false
+			exitCode := strings.TrimSpace(string(exitCodeBytes))
+			if exitCode != "0" {
+				t.warnf("command FAILED with exit code: %s", exitCode)
+				t.returnError = true
+			} else {
+				t.returnError = false
+			}
 		}
 	}
 
@@ -549,6 +571,13 @@ func (t *BashTool) handleCompletedCommand(ctx context.Context) {
 
 	if outputCount < totalCount {
 		fmt.Fprintf(&t.resultBuf, "full output available in: %s\n", t.outputFile)
+	}
+	
+	// In background mode, add helpful hint about reading the output file directly
+	if t.Background {
+		fmt.Fprintf(&t.resultBuf, "\nHint: Command is still running in session %s\n", t.sessionName)
+		fmt.Fprintf(&t.resultBuf, "You can read the output file directly: %s\n", t.outputFile)
+		fmt.Fprintf(&t.resultBuf, "No need to use tmux capture-pane.\n")
 	}
 }
 

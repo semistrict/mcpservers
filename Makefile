@@ -1,12 +1,14 @@
 # Makefile for tmux-mcp project
 
-.PHONY: all build test clean install help lint fmt vet staticcheck precommit ci fmt-check test-coverage
+.PHONY: all build test clean install help lint fmt vet staticcheck precommit ci fmt-check test-coverage metabase-start-testing
 
 TEST_TIMEOUT=90s
 TEST_PARALLEL=32
 GOPATH=$(shell go env GOPATH)
 GOLANGCI_LINT=$(shell command -v golangci-lint 2>/dev/null || echo ${GOPATH}/bin/golangci-lint)
 STATICCHECK=$(shell command -v staticcheck 2>/dev/null || echo ${GOPATH}/bin/staticcheck)
+
+METABASE_TESTING_PORT=3141
 
 # Default target
 all: build test
@@ -15,6 +17,8 @@ all: build test
 build:
 	@echo "Building tmux-mcp..."
 	go build -o bin/tmux-mcp ./servers/tmux/cmd/tmux-mcp
+	@echo "Building metabase-mcp..."
+	go build -o bin/metabase-mcp ./servers/metabase/cmd/metabase-mcp
 	@echo "Building mcptest..."
 	go build -o bin/mcptest ./cmd/mcptest
 	@echo "Building mcpwrapper..."
@@ -69,6 +73,7 @@ clean:
 # Install binaries to GOPATH/bin
 install: build
 	cp bin/tmux-mcp $(GOPATH)/bin/
+	cp bin/metabase-mcp $(GOPATH)/bin/
 	cp bin/mcptest $(GOPATH)/bin/
 	cp bin/mcpwrapper $(GOPATH)/bin/
 	@echo "Install complete!"
@@ -77,3 +82,7 @@ install: build
 # CI workflow
 ci: build test-coverage lint fmt-check vet staticcheck
 	@echo "CI checks passed!"
+
+
+metabase-start-testing:
+	docker run -d -p ${METABASE_TESTING_PORT}:3000 --name metabase metabase/metabase

@@ -163,10 +163,13 @@ func parseToolProperties(toolType reflect.Type) []mcp.ToolOption {
 		switch field.Type.Kind() {
 		case reflect.Pointer:
 			element := field.Type.Elem()
+			if element.Kind() != reflect.Struct {
+				log.Panicf("we only support pointers to structs: %s", field)
+			}
 			// TODO: actually implement this with reflection, for now we just allow hard-coded schemas
 			val, ok := registeredStructSchemas.Load(element.Name())
 			if !ok {
-				log.Panicf("struct schema not registered: %s", field.Type.Name())
+				log.Panicf("struct pointer field without schema not registered: %s", field)
 			}
 			schema := val.(map[string]any)
 			paramOptions = append(paramOptions, func(s map[string]any) {

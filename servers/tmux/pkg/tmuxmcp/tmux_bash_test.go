@@ -373,3 +373,297 @@ func runErr(t *testing.T, bc *BashTool) string {
 	assert.Error(t, err, "expected error, got", output)
 	return err.Error()
 }
+
+func TestBashTool_BackgroundMode(t *testing.T) {
+	tests := []struct {
+		name        string
+		command     string
+		timeout     float64
+		contains    []string
+		notContains []string
+	}{
+		{
+			name:    "Background mode with continuous output",
+			command: `for i in {1..20}; do echo "Iteration $i"; sleep 0.05; done`,
+			timeout: 1.5,
+			contains: []string{
+				"Iteration 1",
+				"Iteration", // Should capture multiple iterations
+				"Hint: Command is still running",
+				"You can read the output file directly",
+			},
+			notContains: []string{
+				"exit code", // Should not have exit code in background mode
+			},
+		},
+		{
+			name:    "Background mode with stable output",
+			command: "echo 'Initial output'; sleep 2; echo 'This should not appear'",
+			timeout: 1,
+			contains: []string{
+				"Initial output",
+				"Hint: Command is still running",
+			},
+			notContains: []string{
+				"This should not appear", // Should return before this is printed
+			},
+		},
+		{
+			name:    "Background mode with error output",
+			command: "echo 'stdout'; echo 'stderr' >&2; sleep 5",
+			timeout: 1,
+			contains: []string{
+				"stdout",
+				"stderr", // Should capture both stdout and stderr
+				"Hint: Command is still running",
+			},
+			notContains: []string{
+				"exit code",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tool := &BashTool{
+				Prefix:           "test-bg",
+				Command:          tt.command,
+				WorkingDirectory: "/tmp",
+				Timeout:          tt.timeout,
+				Background:       true,
+				LineBudget:       100,
+			}
+
+			ctx := context.Background()
+			result, err := tool.Handle(ctx)
+
+			// Check if we got an error or result
+			var resultStr string
+			if err != nil {
+				resultStr = err.Error()
+			} else {
+				resultStr = result.(string)
+			}
+
+			for _, expected := range tt.contains {
+				assert.Contains(t, resultStr, expected)
+			}
+
+			for _, unexpected := range tt.notContains {
+				assert.NotContains(t, resultStr, unexpected)
+			}
+
+			// Verify session is still running
+			sessionExists := sessionExists(ctx, tool.sessionName)
+			assert.True(t, sessionExists, "Session should still be running in background mode")
+
+			// Clean up
+			if sessionExists {
+				runTmuxCommand(ctx, "kill-session", "-t", tool.sessionName)
+			}
+		})
+	}
+}
+
+func TestBashTool_BackgroundMode_QuickExit(t *testing.T) {
+	// Test that background mode handles commands that exit quickly
+	tool := &BashTool{
+		Prefix:           "test-bg-quick",
+		Command:          "echo 'Quick exit'; exit 0",
+		WorkingDirectory: "/tmp",
+		Timeout:          2,
+		Background:       true,
+		LineBudget:       100,
+	}
+
+	ctx := context.Background()
+	result, err := tool.Handle(ctx)
+
+	// Check if we got an error or result
+	var resultStr string
+	if err != nil {
+		resultStr = err.Error()
+	} else {
+		resultStr = result.(string)
+	}
+
+	assert.Contains(t, resultStr, "Quick exit")
+
+	// Even if command exited, we should have captured output
+	time.Sleep(100 * time.Millisecond)
+	_ = sessionExists(ctx, tool.sessionName)
+	// Session may or may not exist depending on timing, but we should have output
+}
+
+func TestBashTool_BackgroundMode_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name         string
+		command      string
+		timeout      float64
+		contains     []string
+		notContains  []string
+		expectError  bool
+		checkSession bool // whether to check if session is still running
+	}{
+		{
+			name:    "Command returns immediately with success",
+			command: "echo 'Immediate success'; exit 0",
+			timeout: 1,
+			contains: []string{
+				"Immediate success",
+			},
+			notContains: []string{
+				"exit code", // Background mode doesn't check exit codes
+			},
+			expectError:  false,
+			checkSession: false, // Session may have already exited
+		},
+		{
+			name:    "Command returns immediately with error",
+			command: "echo 'Error output' >&2; exit 1",
+			timeout: 1,
+			contains: []string{
+				"Error output",
+			},
+			notContains: []string{
+				"exit code", // Background mode doesn't check exit codes
+			},
+			expectError:  false, // Background mode doesn't report exit codes as errors
+			checkSession: false,
+		},
+		{
+			name:    "Command that never returns",
+			command: "echo 'Starting infinite loop'; while true; do sleep 1; done",
+			timeout: 1,
+			contains: []string{
+				"Starting infinite loop",
+				"Hint: Command is still running",
+				"You can read the output file directly",
+			},
+			notContains:  []string{},
+			expectError:  false,
+			checkSession: true, // Should still be running
+		},
+		{
+			name:    "Command with no output",
+			command: "sleep 10",
+			timeout: 1,
+			contains: []string{
+				"completed successfully but produced no output",
+			},
+			notContains:  []string{},
+			expectError:  false,
+			checkSession: true,
+		},
+		{
+			name:    "Command that produces output then exits with error",
+			command: "echo 'Starting...'; sleep 0.5; echo 'Error!' >&2; exit 42",
+			timeout: 1,
+			contains: []string{
+				"Starting...",
+				"Error!",
+			},
+			notContains: []string{
+				"exit code", // Background mode doesn't check exit codes
+			},
+			expectError:  false,
+			checkSession: false,
+		},
+		{
+			name:    "Command with rapid output then stability",
+			command: "for i in {1..5}; do echo \"Line $i\"; done; sleep 10",
+			timeout: 2,
+			contains: []string{
+				"Line 1",
+				"Line 2",
+				"Line 3",
+				"Line 4",
+				"Line 5",
+			},
+			notContains:  []string{},
+			expectError:  false,
+			checkSession: true,
+		},
+		{
+			name:    "Command that fails to start",
+			command: "/nonexistent/command",
+			timeout: 1,
+			contains: []string{
+				"No such file or directory", // Actual shell error message
+			},
+			notContains:  []string{},
+			expectError:  false, // Error is captured in output, not returned
+			checkSession: false,
+		},
+		{
+			name:    "Command with very long lines",
+			command: "echo 'Start'; printf 'A%.0s' {1..3000}; echo 'End'",
+			timeout: 1,
+			contains: []string{
+				"Start",
+				"AAAA", // Should contain the A's
+				"End",
+			},
+			notContains:  []string{},
+			expectError:  false,
+			checkSession: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tool := &BashTool{
+				Prefix:           "test-bg-edge",
+				Command:          tt.command,
+				WorkingDirectory: "/tmp",
+				Timeout:          tt.timeout,
+				Background:       true,
+				LineBudget:       100,
+			}
+
+			ctx := context.Background()
+			result, err := tool.Handle(ctx)
+
+			// Check error expectation
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			// Get result string
+			var resultStr string
+			if err != nil {
+				resultStr = err.Error()
+			} else if result != nil {
+				resultStr = result.(string)
+			}
+
+			// Check expected content
+			for _, expected := range tt.contains {
+				assert.Contains(t, resultStr, expected, "Expected to find: %s", expected)
+			}
+
+			for _, unexpected := range tt.notContains {
+				assert.NotContains(t, resultStr, unexpected, "Should not contain: %s", unexpected)
+			}
+
+			// Check session status if needed
+			if tt.checkSession {
+				time.Sleep(100 * time.Millisecond) // Give session time to stabilize
+				exists := sessionExists(ctx, tool.sessionName)
+				assert.True(t, exists, "Session should still be running for: %s", tt.name)
+			}
+
+			// Clean up sessions
+			if tool.sessionName != "" {
+				// Try to kill session, ignore errors (it may have already exited)
+				runTmuxCommand(ctx, "kill-session", "-t", tool.sessionName)
+			}
+		})
+	}
+}
