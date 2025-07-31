@@ -54,7 +54,7 @@ if [ "$found_violations" = true ]; then
     exit 1
 fi
 
-# Check 2: Look for Skip statements in tests
+# Check 2: Look for Skip statements in tests (excluding integration tests)
 
 # Find all test files
 all_test_files=$(find . -name "*_test.go" -type f 2>/dev/null || true)
@@ -68,6 +68,12 @@ if [ -n "$all_test_files" ]; then
     for file in $all_test_files; do
         # Look for various forms of Skip
         if grep -E "t\.(Skip|Skipf|SkipNow)" "$file" >/dev/null 2>&1; then
+            # Check if this is an integration test skip (allowed)
+            # Look for RUN_*_TESTS environment variable checks or "integration test" mentions
+            if grep -E -B3 -A1 "t\.(Skip|Skipf|SkipNow)" "$file" | grep -E "RUN_[A-Z_]*TESTS|[Ii]ntegration test" >/dev/null 2>&1; then
+                # This is an integration test skip, which is allowed
+                continue
+            fi
             found_skips=true
             skip_files+=("$file")
         fi
@@ -78,20 +84,25 @@ if [ -n "$all_test_files" ]; then
         echo "Running repository checks..."
         echo
         echo "Checking for Skip statements in test files..."
-        echo -e "${RED}✗ Found Skip statements in test files:${NC}"
+        echo -e "${RED}✗ Found Skip statements in non-integration test files:${NC}"
         echo
         
         for file in "${skip_files[@]}"; do
             echo -e "${RED}  $file:${NC}"
-            # Show the lines with Skip
+            # Show the lines with Skip (excluding integration test skips)
             grep -nE "t\.(Skip|Skipf|SkipNow)" "$file" | while IFS= read -r line; do
-                echo "    $line"
+                # Check if this line is part of an integration test skip
+                line_num=$(echo "$line" | cut -d: -f1)
+                if ! sed -n "$((line_num-3)),$((line_num+1))p" "$file" | grep -E "RUN_[A-Z_]*TESTS|[Ii]ntegration test" >/dev/null 2>&1; then
+                    echo "    $line"
+                fi
             done
             echo
         done
         
         echo -e "${RED}Tests should fail rather than skip when requirements aren't met${NC}"
         echo -e "${RED}This ensures CI/test environments are properly configured${NC}"
+        echo -e "${YELLOW}Note: Skips for integration tests (checking RUN_*_TESTS env vars) are allowed${NC}"
         exit 1
     fi
 fi

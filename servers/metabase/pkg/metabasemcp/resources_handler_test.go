@@ -11,6 +11,8 @@ import (
 )
 
 func TestCreateDatabaseResourceHandler(t *testing.T) {
+	skipIfNoMetabase(t)
+
 	// Initialize test client
 	testServerURL := "http://localhost:3141"
 	testCookiesFile := "/Users/ramon/.metabase/cookies.txt"

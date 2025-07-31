@@ -10,6 +10,8 @@ import (
 )
 
 func TestRunQueryTool_ErrorHandling(t *testing.T) {
+	skipIfNoMetabase(t)
+
 	// Initialize test client
 	testServerURL := "http://localhost:3141"
 	testCookiesFile := "/Users/ramon/.metabase/cookies.txt"
@@ -74,6 +76,8 @@ func TestRunQueryTool_ErrorHandling(t *testing.T) {
 }
 
 func TestRunQueryTool_SuccessfulQuery(t *testing.T) {
+	skipIfNoMetabase(t)
+
 	// Initialize test client
 	testServerURL := "http://localhost:3141"
 	testCookiesFile := "/Users/ramon/.metabase/cookies.txt"

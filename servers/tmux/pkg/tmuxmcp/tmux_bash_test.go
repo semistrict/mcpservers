@@ -248,7 +248,7 @@ func TestBashTool_filtering(t *testing.T) {
 			name:        "no filters - should show all testLines",
 			contains:    []string{"line 1", "line 50", "line 100"},
 			notContains: nil,
-			BashTool:    BashTool{},
+			BashTool:    *NewBashTool(),
 		},
 		{
 			name:        "head filter - first 10 testLines",

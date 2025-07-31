@@ -19,6 +19,21 @@ import (
 	"github.com/semistrict/mcpservers/pkg/mcpcommon"
 )
 
+// NewBashTool creates a new BashTool with default values
+func NewBashTool() *BashTool {
+	wd, err := os.Getwd()
+	if err != nil {
+		slog.Error("failed to get wd", "err", err)
+		wd = "/tmp"
+	}
+	return &BashTool{
+		LineBudget:       100,
+		WorkingDirectory: wd,
+		Timeout:          10.0,
+		Prefix:           detectPrefix(),
+	}
+}
+
 func init() {
 	mcpcommon.RegisterStructSchema("SaveAs", `
 		{
@@ -57,19 +72,7 @@ func init() {
 			"required": ["name", "description"]
 		}
 	`)
-	Tools = append(Tools, mcpcommon.ReflectTool(func() *BashTool {
-		wd, err := os.Getwd()
-		if err != nil {
-			slog.Error("failed to get wd", "err", err)
-			wd = "/tmp"
-		}
-		return &BashTool{
-			LineBudget:       100,
-			WorkingDirectory: wd,
-			Timeout:          10.0,
-			Prefix:           detectPrefix(),
-		}
-	}))
+	Tools = append(Tools, mcpcommon.ReflectTool(NewBashTool))
 }
 
 type BashTool struct {
@@ -572,7 +575,7 @@ func (t *BashTool) handleCompletedCommand(ctx context.Context) {
 	if outputCount < totalCount {
 		fmt.Fprintf(&t.resultBuf, "full output available in: %s\n", t.outputFile)
 	}
-	
+
 	// In background mode, add helpful hint about reading the output file directly
 	if t.Background {
 		fmt.Fprintf(&t.resultBuf, "\nHint: Command is still running in session %s\n", t.sessionName)

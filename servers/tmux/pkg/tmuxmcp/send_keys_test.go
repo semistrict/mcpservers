@@ -9,8 +9,11 @@ import (
 )
 
 func TestSendKeysToolLiteralMode_Integration(t *testing.T) {
-	// Create a real tmux session for testing
-	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
+	// Create a real tmux session for testing with a short prompt to avoid line wrapping in CI
+	env := map[string]string{
+		"PS1": "$ ", // Short prompt to prevent line wrapping
+	}
+	sessionName, err := createUniqueSessionWithEnv(t.Context(), "test", []string{"bash"}, env)
 	assert.NoError(t, err)
 
 	// Get initial hash
@@ -124,8 +127,11 @@ func TestSendKeysCommonValidation(t *testing.T) {
 }
 
 func TestSendKeysToolHandle_Integration(t *testing.T) {
-	// Create a real tmux session for testing
-	sessionName, err := createUniqueSession(t.Context(), "TestSendKeysToolHandle_Integration", []string{"bash"})
+	// Create a real tmux session for testing with a short prompt to avoid line wrapping in CI
+	env := map[string]string{
+		"PS1": "$ ", // Short prompt to prevent line wrapping
+	}
+	sessionName, err := createUniqueSessionWithEnv(t.Context(), "TestSendKeysToolHandle_Integration", []string{"bash"}, env)
 	if err != nil {
 		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
@@ -162,8 +168,11 @@ func TestSendKeysToolHandle_Integration(t *testing.T) {
 }
 
 func TestSendControlKeysToolHandle_Integration(t *testing.T) {
-	// Create a real tmux session for testing
-	sessionName, err := createUniqueSession(t.Context(), "test", []string{"bash"})
+	// Create a real tmux session for testing with a short prompt to avoid line wrapping in CI
+	env := map[string]string{
+		"PS1": "$ ", // Short prompt to prevent line wrapping
+	}
+	sessionName, err := createUniqueSessionWithEnv(t.Context(), "test", []string{"bash"}, env)
 	if err != nil {
 		t.Fatalf("Could not create tmux session for testing: %v", err)
 	}
@@ -331,8 +340,12 @@ func TestEnterFlagHandling_Integration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel() // Run subtests in parallel
 
+			// Create a real tmux session for testing with a short prompt to avoid line wrapping in CI
+			env := map[string]string{
+				"PS1": "$ ", // Short prompt to prevent line wrapping
+			}
 			var err error
-			tt.opts.SessionName, err = createUniqueSession(t.Context(), "test", []string{"bash"})
+			tt.opts.SessionName, err = createUniqueSessionWithEnv(t.Context(), "test", []string{"bash"}, env)
 			assert.NoError(t, err)
 
 			// Get initial hash

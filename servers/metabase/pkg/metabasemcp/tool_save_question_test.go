@@ -2,7 +2,6 @@ package metabasemcp
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +10,8 @@ import (
 )
 
 func TestSaveQuestionTool(t *testing.T) {
+	skipIfNoMetabase(t)
+
 	// Initialize test client
 	testServerURL := "http://localhost:3141"
 	testCookiesFile := "/Users/ramon/.metabase/cookies.txt"
@@ -54,6 +55,8 @@ func TestSaveQuestionTool(t *testing.T) {
 }
 
 func TestSaveQuestionTool_TableDisplay(t *testing.T) {
+	skipIfNoMetabase(t)
+
 	// Initialize test client
 	testServerURL := "http://localhost:3141"
 	testCookiesFile := "/Users/ramon/.metabase/cookies.txt"
@@ -88,6 +91,8 @@ func TestSaveQuestionTool_TableDisplay(t *testing.T) {
 }
 
 func TestSaveQuestionTool_WithCollection(t *testing.T) {
+	skipIfNoMetabase(t)
+
 	// Initialize test client
 	testServerURL := "http://localhost:3141"
 	testCookiesFile := "/Users/ramon/.metabase/cookies.txt"
@@ -114,11 +119,7 @@ func TestSaveQuestionTool_WithCollection(t *testing.T) {
 
 	// Note: This might fail if collection 1 doesn't exist or user doesn't have permission
 	if err != nil {
-		if strings.Contains(err.Error(), "collection") || strings.Contains(err.Error(), "permission") {
-			t.Skipf("Skipping collection test: %v", err)
-			return
-		}
-		t.Fatalf("Unexpected error: %v", err)
+		t.Fatalf("Failed to save question to collection: %v. Ensure collection 1 exists and user has permission.", err)
 	}
 
 	require.NotNil(t, result)
@@ -178,6 +179,8 @@ func TestSaveQuestionTool_Validation(t *testing.T) {
 }
 
 func TestSaveQuestionTool_InvalidQuery(t *testing.T) {
+	skipIfNoMetabase(t)
+
 	// Initialize test client
 	testServerURL := "http://localhost:3141"
 	testCookiesFile := "/Users/ramon/.metabase/cookies.txt"

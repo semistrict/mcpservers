@@ -105,7 +105,7 @@ func (t *SaveQuestionTool) Handle(ctx context.Context) (interface{}, error) {
 	}
 
 	// Format response
-	response := fmt.Sprintf("Question saved successfully!\n\n")
+	response := "Question saved successfully!\n\n"
 	response += fmt.Sprintf("ID: %d\n", result.ID)
 	response += fmt.Sprintf("Name: %s\n", result.Name)
 	if result.Description != nil && *result.Description != "" {

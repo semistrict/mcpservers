@@ -9,10 +9,7 @@ import (
 )
 
 func TestRunQueryTool(t *testing.T) {
-	// Skip test if not explicitly requested
-	if os.Getenv("RUN_METABASE_TESTS") != "1" {
-		t.Skip("Skipping Metabase integration test. Set RUN_METABASE_TESTS=1 to run.")
-	}
+	skipIfNoMetabase(t)
 
 	// Use test server on localhost:3141
 	serverURL := "http://localhost:3141"
@@ -60,10 +57,7 @@ func TestRunQueryTool(t *testing.T) {
 }
 
 func TestRunQueryTool_WithFileOutput(t *testing.T) {
-	// Skip test if not explicitly requested
-	if os.Getenv("RUN_METABASE_TESTS") != "1" {
-		t.Skip("Skipping Metabase integration test. Set RUN_METABASE_TESTS=1 to run.")
-	}
+	skipIfNoMetabase(t)
 
 	// Use test server on localhost:3141
 	serverURL := "http://localhost:3141"
@@ -248,10 +242,7 @@ func TestRunQueryTool_WithFileOutput(t *testing.T) {
 }
 
 func TestRunQueryTool_InvalidDatabase(t *testing.T) {
-	// Skip test if not explicitly requested
-	if os.Getenv("RUN_METABASE_TESTS") != "1" {
-		t.Skip("Skipping Metabase integration test. Set RUN_METABASE_TESTS=1 to run.")
-	}
+	skipIfNoMetabase(t)
 
 	// Use test server on localhost:3141
 	serverURL := "http://localhost:3141"
